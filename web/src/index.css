@@ -3,35 +3,37 @@
 @tailwind utilities;
 
 /*
-  Tema claro, fundo branco — decisão explícita do usuário (não replicar o tema
-  escuro do app Flutter original). Sem override de dark mode por enquanto.
+  Tema escuro navy + ciano — réplica deliberada da identidade visual do
+  protótipo Flutter original (ver figuras/prototipo/*.png no TCC e
+  Produçao/design/design brand csis/). Não é uma escolha nova: é a marca
+  já existente da CSIS, só reimplementada em CSS.
 */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --background: 220 45% 6%;
+    --foreground: 210 40% 96%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 220 40% 10%;
+    --card-foreground: 210 40% 96%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 189 85% 53%;
+    --primary-foreground: 220 45% 6%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 220 35% 15%;
+    --secondary-foreground: 210 40% 96%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 220 35% 14%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 220 35% 16%;
+    --accent-foreground: 189 85% 60%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --border: 220 30% 18%;
+    --input: 220 35% 14%;
+    --ring: 189 85% 53%;
 
     --radius: 0.5rem;
   }

@@ -97,6 +97,16 @@ export interface Arquivo {
   enviado_em: string;
 }
 
+export interface LogAuditoria {
+  id: string;
+  user_id: string | null;
+  acao: string;
+  entidade: string;
+  entidade_id: string;
+  timestamp: string;
+  user?: { id: string; nome: string; email: string } | null;
+}
+
 export interface Documento {
   id: string;
   projeto_id: string;

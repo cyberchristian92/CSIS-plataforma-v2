@@ -3,6 +3,7 @@ import type {
   Arquivo,
   Coluna,
   Documento,
+  LogAuditoria,
   Missao,
   MissaoLabel,
   Pasta,
@@ -54,6 +55,7 @@ export const api = {
     login: (email: string, senha: string) => post<User>("/auth/login", { email, senha }),
     logout: () => post<{ ok: boolean }>("/auth/logout"),
     me: () => get<User>("/auth/me"),
+    listarUsuarios: () => get<User[]>("/auth/usuarios"),
   },
 
   workspaces: {
@@ -66,6 +68,13 @@ export const api = {
     listarPorWorkspace: (workspaceId: string) => get<Area[]>(`/workspaces/${workspaceId}/areas`),
     criar: (workspaceId: string, nome: string, tipo: string) =>
       post<Area>(`/workspaces/${workspaceId}/areas`, { nome, tipo }),
+    listarTodas: async (): Promise<Area[]> => {
+      const workspaces = await get<Workspace[]>("/workspaces");
+      const areasPorWorkspace = await Promise.all(
+        workspaces.map((ws) => get<Area[]>(`/workspaces/${ws.id}/areas`)),
+      );
+      return areasPorWorkspace.flat();
+    },
   },
 
   projetos: {
@@ -73,6 +82,19 @@ export const api = {
     buscar: (id: string) => get<Projeto>(`/projetos/${id}`),
     criar: (areaId: string, nome: string, descricao?: string) =>
       post<Projeto>(`/areas/${areaId}/projetos`, { nome, descricao }),
+    // Sem endpoint agregado no backend (projetos vivem só sob uma Área) —
+    // agrega no cliente: workspace(s) -> áreas -> projetos de cada área.
+    listarTodos: async (): Promise<Projeto[]> => {
+      const workspaces = await get<Workspace[]>("/workspaces");
+      const areasPorWorkspace = await Promise.all(
+        workspaces.map((ws) => get<Area[]>(`/workspaces/${ws.id}/areas`)),
+      );
+      const areas = areasPorWorkspace.flat();
+      const projetosPorArea = await Promise.all(
+        areas.map((area) => get<Projeto[]>(`/areas/${area.id}/projetos`)),
+      );
+      return projetosPorArea.flat();
+    },
   },
 
   missoes: {
@@ -121,9 +143,14 @@ export const api = {
     verificarIntegridade: (id: string) => get<{ integro: boolean }>(`/arquivos/${id}/verificar`),
   },
 
+  auditoria: {
+    listar: (pageSize = 8) => get<{ items: LogAuditoria[]; total: number }>(`/auditoria?pageSize=${pageSize}`),
+  },
+
   documentos: {
     listarPorProjeto: (projetoId: string, pastaId?: string) =>
       get<Documento[]>(`/projetos/${projetoId}/documentos${pastaId ? `?pastaId=${pastaId}` : "?pastaId=raiz"}`),
+    buscar: (id: string) => get<Documento>(`/documentos/${id}`),
     criar: (projetoId: string, nome: string, pastaId?: string) =>
       post<Documento>(`/projetos/${projetoId}/documentos`, { conteudo: `# ${nome}\n`, pastaId }),
     atualizar: (id: string, conteudo: string) => patch<Documento>(`/documentos/${id}`, { conteudo }),

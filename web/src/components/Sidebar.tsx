@@ -1,132 +1,133 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, type ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { ChevronRight, Folder, FolderOpen, LayoutGrid, Building2, ListChecks } from "lucide-react";
-import { api } from "@/lib/api";
-import type { Area, Workspace } from "@/lib/types";
+import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { Avatar } from "./ui/avatar";
 
-// Navegação em árvore Workspace > Área > Projeto, no espírito do Google Drive:
-// cada nível expande/colapsa, e o item ativo fica destacado.
+// Sidebar organizada pelo método PARA (Projetos / Áreas / Recursos /
+// Arquivamento) — não é uma árvore Workspace>Área>Projeto tipo Drive, é a
+// mesma taxonomia de navegação do protótipo original (ver figuras/prototipo
+// no TCC). Cada grupo é uma seção do PARA, não um nível hierárquico de dados.
+
+interface NavItem {
+  to: string;
+  label: string;
+}
+
+interface NavGroup {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  items: NavItem[];
+}
+
+const GROUPS: NavGroup[] = [
+  {
+    label: "Projetos",
+    icon: Folder,
+    items: [
+      { to: "/projetos", label: "Projetos Abertos" },
+      { to: "/minhas-missoes", label: "Minhas Missões" },
+    ],
+  },
+  {
+    label: "Áreas",
+    icon: Building2,
+    items: [
+      { to: "/areas", label: "Gestão de Áreas" },
+      { to: "/tipos-projeto", label: "Tipos de Projeto" },
+    ],
+  },
+  {
+    label: "Recursos",
+    icon: Settings2,
+    items: [
+      { to: "/usuarios", label: "Gestão de Usuários" },
+      { to: "/auditoria", label: "Auditoria Global" },
+    ],
+  },
+  {
+    label: "Arquivamento",
+    icon: Archive,
+    items: [{ to: "/arquivados", label: "Projetos Arquivados" }],
+  },
+];
 
 export function Sidebar() {
-  const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
-    queryFn: api.workspaces.listar,
-  });
+  const { user, logout } = useAuth();
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-background">
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-          C
-        </div>
-        <span className="text-sm font-semibold">CSIS</span>
+      <div className="flex h-16 items-center gap-2 border-b border-border px-4">
+        <img src="/csis-mark.svg" alt="CSIS" className="h-7 w-7 rounded bg-white p-0.5" />
+        <span className="text-lg font-bold tracking-wide text-primary">CSIS</span>
       </div>
 
-      <nav className="flex flex-col gap-0.5 border-b border-border p-2">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
         <NavLink
           to="/"
           end
           className={({ isActive }) =>
             cn(
-              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-foreground/80 hover:bg-accent",
-              isActive && "bg-accent font-medium text-foreground",
+              "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:bg-accent",
+              isActive && "bg-accent text-primary",
             )
           }
         >
           <LayoutGrid className="h-4 w-4" /> Painel
         </NavLink>
-        <NavLink
-          to="/minhas-missoes"
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-foreground/80 hover:bg-accent",
-              isActive && "bg-accent font-medium text-foreground",
-            )
-          }
-        >
-          <ListChecks className="h-4 w-4" /> Minhas Missões
-        </NavLink>
+
+        {GROUPS.map((group) => (
+          <NavGroupSection key={group.label} group={group} />
+        ))}
       </nav>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        <p className="px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Workspaces
-        </p>
-        {workspaces?.map((ws) => (
-          <WorkspaceNode key={ws.id} workspace={ws} />
-        ))}
-      </div>
+      {user && (
+        <div className="flex items-center gap-2 border-t border-border p-3">
+          <Avatar nome={user.nome} />
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-sm font-medium">{user.nome}</p>
+            <p className="text-xs text-muted-foreground">{user.papel_global}</p>
+          </div>
+          <button onClick={() => logout()} title="Sair" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
 
-function WorkspaceNode({ workspace }: { workspace: Workspace }) {
+function NavGroupSection({ group }: { group: NavGroup }) {
   const [open, setOpen] = useState(true);
-  const { data: areas } = useQuery({
-    queryKey: ["areas", workspace.id],
-    queryFn: () => api.areas.listarPorWorkspace(workspace.id),
-    enabled: open,
-  });
+  const Icon = group.icon;
 
   return (
-    <div>
+    <div className="mt-1">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 text-sm hover:bg-accent"
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground/90 hover:bg-accent"
       >
-        <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        {open ? <FolderOpen className="h-4 w-4 shrink-0 text-primary" /> : <Folder className="h-4 w-4 shrink-0 text-primary" />}
-        <span className="truncate">{workspace.nome}</span>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="flex-1 text-left">{group.label}</span>
+        {open ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
       </button>
       {open && (
-        <div className="ml-3.5 border-l border-border pl-2">
-          {areas?.map((area) => (
-            <AreaNode key={area.id} area={area} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AreaNode({ area }: { area: Area }) {
-  const [open, setOpen] = useState(false);
-  const { data: projetos } = useQuery({
-    queryKey: ["projetos", area.id],
-    queryFn: () => api.projetos.listarPorArea(area.id),
-    enabled: open,
-  });
-
-  return (
-    <div>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1 rounded-md px-1.5 py-1.5 text-sm hover:bg-accent"
-      >
-        <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate">{area.nome}</span>
-      </button>
-      {open && (
-        <div className="ml-3.5 border-l border-border pl-2">
-          {projetos?.map((projeto) => (
+        <div className="ml-4 flex flex-col gap-0.5 border-l border-border pl-3">
+          {group.items.map((item) => (
             <NavLink
-              key={projeto.id}
-              to={`/projetos/${projeto.id}`}
+              key={item.to}
+              to={item.to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2 truncate rounded-md px-1.5 py-1.5 text-sm text-foreground/80 hover:bg-accent",
-                  isActive && "bg-accent font-medium text-foreground",
+                  "rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground",
+                  isActive && "bg-accent font-medium text-primary",
                 )
               }
             >
-              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{projeto.nome}</span>
+              {item.label}
             </NavLink>
           ))}
-          {projetos?.length === 0 && <p className="px-1.5 py-1 text-xs text-muted-foreground">Sem projetos</p>}
         </div>
       )}
     </div>

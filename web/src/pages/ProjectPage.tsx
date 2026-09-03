@@ -1,12 +1,12 @@
-import type { ReactNode } from "react";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { KanbanSquare, FolderOpen } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function ProjectPage() {
   const { projetoId = "" } = useParams();
+  const navigate = useNavigate();
   const { data: projeto } = useQuery({
     queryKey: ["projeto", projetoId],
     queryFn: () => api.projetos.buscar(projetoId),
@@ -16,10 +16,20 @@ export default function ProjectPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-6 pt-5">
-        <h1 className="text-lg font-semibold">{projeto?.nome}</h1>
-        <div className="mt-3 flex gap-1">
-          <TabLink to="arquivos" icon={<FolderOpen className="h-4 w-4" />} label="Arquivos" />
-          <TabLink to="board" icon={<KanbanSquare className="h-4 w-4" />} label="Board" />
+        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <button onClick={() => navigate("/projetos")} className="hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <button onClick={() => navigate("/projetos")} className="hover:text-foreground">
+            Projetos
+          </button>
+          <span>›</span>
+          <span className="font-medium text-primary">{projeto?.nome}</span>
+        </div>
+        <div className="flex gap-6">
+          <TabLink to="visao-geral" label="Visão Geral" />
+          <TabLink to="board" label="Missões (Kanban)" />
+          <TabLink to="arquivos" label="Arquivos e Documentos" />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -29,18 +39,18 @@ export default function ProjectPage() {
   );
 }
 
-function TabLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
+function TabLink({ to, label }: { to: string; label: string }) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-1.5 rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground",
-          isActive && "border-primary text-foreground",
+          "border-b-2 border-transparent pb-3 text-sm font-medium text-muted-foreground hover:text-foreground",
+          isActive && "border-primary text-primary",
         )
       }
     >
-      {icon} {label}
+      {label}
     </NavLink>
   );
 }

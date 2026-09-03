@@ -1,11 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -36,52 +34,47 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="items-center gap-2 pt-8 text-center">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-          </div>
-          <CardTitle className="text-lg">Entrar na CSIS</CardTitle>
-          <p className="text-sm text-muted-foreground">Plataforma de gestão pericial</p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
-                E-mail
-              </label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@empresa.com"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="senha" className="text-xs font-medium text-muted-foreground">
-                Senha
-              </label>
-              <Input
-                id="senha"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                placeholder="••••••••"
-              />
-            </div>
-            {erro && <p className="text-sm text-destructive">{erro}</p>}
-            <Button type="submit" disabled={enviando} className="mt-2">
-              {enviando ? "Entrando…" : "Entrar"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-screen bg-background">
+      {/* Painel do formulário */}
+      <div className="flex w-full flex-col justify-center px-10 sm:px-16 lg:w-1/2 xl:px-24">
+        <div className="mb-14 flex items-center gap-2.5">
+          <img src="/csis-mark.svg" alt="CSIS" className="h-9 w-9 rounded bg-white p-0.5" />
+          <span className="text-2xl font-bold tracking-wide text-primary">CSIS</span>
+        </div>
+
+        <h1 className="text-3xl font-bold">Entrar</h1>
+        <p className="mt-1 text-muted-foreground">Acesse a plataforma de gestão técnica</p>
+
+        <form onSubmit={onSubmit} className="mt-8 flex max-w-sm flex-col gap-3">
+          <Input
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="seu@email.com"
+            className="h-12 bg-secondary/60 text-base"
+          />
+          <Input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            placeholder="Senha"
+            className="h-12 bg-secondary/60 text-base"
+          />
+          {erro && <p className="text-sm text-destructive">{erro}</p>}
+          <Button type="submit" disabled={enviando} size="lg" className="mt-3 h-12 text-base font-semibold">
+            {enviando ? "Entrando…" : "Entrar"}
+          </Button>
+        </form>
+      </div>
+
+      {/* Painel de marca */}
+      <div className="hidden w-1/2 items-center justify-center bg-card lg:flex">
+        <img src="/csis-mark.svg" alt="" className="h-80 w-80 rounded-2xl bg-white/90 p-8" />
+      </div>
     </div>
   );
 }

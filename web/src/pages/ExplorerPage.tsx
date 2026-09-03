@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, File, FilePlus2, FileText, Folder, FolderPlus, Home, ShieldCheck, Upload } from "lucide-react";
 import { api } from "@/lib/api";
@@ -123,14 +123,15 @@ export default function ExplorerPage() {
         ))}
 
         {documentos?.map((doc) => (
-          <div
+          <Link
             key={doc.id}
+            to={`/documentos/${doc.id}`}
             className="group flex flex-col items-start gap-2 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent"
           >
             <FileText className="h-8 w-8 text-muted-foreground" />
             <span className="w-full truncate text-sm font-medium">Documento</span>
             <span className="text-xs text-muted-foreground">{formatDate(doc.atualizado_em)}</span>
-          </div>
+          </Link>
         ))}
 
         {arquivos?.map((arquivo) => (

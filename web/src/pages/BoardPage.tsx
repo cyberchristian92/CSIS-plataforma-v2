@@ -72,7 +72,7 @@ export default function BoardPage() {
   });
 
   const criarMissao = useMutation({
-    mutationFn: (colunaId: string) => {
+    mutationFn: (colunaId?: string) => {
       const titulo = window.prompt("Título da missão:");
       if (!titulo) return Promise.reject(new Error("cancelado"));
       return api.missoes.criar(projetoId, { titulo, colunaId });
@@ -118,10 +118,12 @@ export default function BoardPage() {
 
   return (
     <div className="flex h-full flex-col p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Board de Missões</h1>
-        <Button size="sm" variant="outline" onClick={() => criarColuna.mutate()}>
+      <div className="mb-4 flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={() => criarColuna.mutate()}>
           <Plus className="h-4 w-4" /> Nova coluna
+        </Button>
+        <Button onClick={() => criarMissao.mutate(colunas?.[0]?.id)}>
+          <Plus className="h-4 w-4" /> Nova Missão
         </Button>
       </div>
 
