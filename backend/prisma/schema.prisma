@@ -1,0 +1,376 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------------------------------------------------------------------
+// Camada de integridade IPFS (v2) — ver docs/adr/0001-sem-blockchain-postgres-ipfs.md
+//
+// `ipfs_cid` aparece em dois tipos de entidade:
+//   - Nós de "pasta" (Workspace, Area, Projeto, Missao, Pasta): o CID é o hash de um
+//     diretório IPFS (UnixFS), derivado dos CIDs dos filhos (sub-pastas, arquivos,
+//     documentos). Recalculado pela camada de aplicação quando o conteúdo muda.
+//   - Nós de "folha de conteúdo" (Arquivo, Documento): o CID do próprio conteúdo
+//     adicionado ao IPFS. `Arquivo.hash_sha256` continua existindo em paralelo — é o
+//     hash de integridade forense já citado no TCC; `ipfs_cid` é o endereço de
+//     armazenamento/recuperação do conteúdo, não substitui o hash forense.
+// Histórico de mudança de CID (decisão: versionado/encadeado) é registrado via
+// LogAuditoria (acao = "CID_ATUALIZADO"), reaproveitando o mecanismo de auditoria já
+// existente em vez de criar uma tabela nova — ver ADR-0001.
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Core Entities
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String         @id @default(uuid())
+  nome         String
+  email        String         @unique
+  senha_hash   String
+  papel_global String         @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
+  criado_em    DateTime       @default(now())
+
+  entregas     Entrega[]
+  revisoes     Revisao[]
+  documentos   Documento[]
+  comentarios  ComentarioMissao[]
+  permissoes   Permissao[]
+  logs         LogAuditoria[]
+  tokensRecuperacao TokenRecuperacaoSenha[]
+  missoes_responsavel MissaoResponsavel[]
+}
+
+model Workspace {
+  id          String      @id @default(uuid())
+  nome        String
+  descricao   String?
+  ipfs_cid    String?     // CID do diretório raiz do Workspace na árvore IPFS
+  areas       Area[]
+  permissoes  Permissao[]
+}
+
+model Area {
+  id           String      @id @default(uuid())
+  workspace_id String
+  nome         String
+  tipo         String      // ex: PERICIA, MARKETING, CURSOS
+  ipfs_cid     String?     // CID do diretório da Área na árvore IPFS
+
+  workspace    Workspace   @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  projetos     Projeto[]
+  tipos_proj   TipoProjeto[]
+}
+
+model Projeto {
+  id           String      @id @default(uuid())
+  area_id      String
+  nome         String
+  descricao    String?
+  status       String      @default("ATIVO") // ATIVO, ARQUIVADO, CONCLUIDO
+  prazo        DateTime?
+  ipfs_cid     String?     // CID do diretório do Projeto na árvore IPFS
+
+  area         Area        @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  missoes      Missao[]
+  documentos   Documento[]
+  arquivos     Arquivo[]
+  pastas       Pasta[]
+  permissoes   Permissao[]
+  valores_campo ValorCampo[]
+  colunas      Coluna[]
+  labels       MissaoLabel[]
+}
+
+model Missao {
+  id              String      @id @default(uuid())
+  projeto_id      String
+  titulo          String
+  descricao       String?
+  status          String      @default("PENDENTE") // PENDENTE, EM_ANDAMENTO, EM_REVISAO, APROVADA, REJEITADA
+  prazo           DateTime?
+  criterio_aceite String?
+  valor_bounty    Float?
+  tags            String[]    @default([])
+  ipfs_cid        String?     // CID do diretório da Missão na árvore IPFS
+
+  // Board Kanban (organizacional, desacoplado de `status` — ver Coluna)
+  coluna_id       String?
+  ordem           Int         @default(0)
+  cor_capa        String?
+
+  projeto         Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  coluna          Coluna?     @relation(fields: [coluna_id], references: [id], onDelete: SetNull)
+  responsaveis    MissaoResponsavel[]
+  labels          MissaoLabelMissao[]
+  entregas        Entrega[]
+  valores_campo   ValorCampo[]
+  arquivos        Arquivo[]
+  documentos      Documento[]
+  pastas          Pasta[]
+  comentarios     ComentarioMissao[]
+  itens_checklist ChecklistItem[]
+}
+
+// ----------------------------------------------------------------------------
+// Kanban (board livre estilo Trello, desacoplado do status de negócio)
+// ----------------------------------------------------------------------------
+
+model Coluna {
+  id          String   @id @default(uuid())
+  projeto_id  String
+  nome        String
+  ordem       Int      @default(0)
+  limite_wip  Int?
+  criado_em   DateTime @default(now())
+
+  projeto     Projeto  @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missoes     Missao[]
+}
+
+model MissaoLabel {
+  id         String @id @default(uuid())
+  projeto_id String
+  nome       String
+  cor        String // hex de uma paleta fixa, validado no DTO
+
+  projeto    Projeto             @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missoes    MissaoLabelMissao[]
+}
+
+model MissaoLabelMissao {
+  missao_id String
+  label_id  String
+
+  missao    Missao      @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+  label     MissaoLabel @relation(fields: [label_id], references: [id], onDelete: Cascade)
+
+  @@id([missao_id, label_id])
+}
+
+model MissaoResponsavel {
+  id           String   @id @default(uuid())
+  missao_id    String
+  user_id      String
+  atribuido_em DateTime @default(now())
+
+  missao       Missao   @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([missao_id, user_id])
+}
+
+// ----------------------------------------------------------------------------
+// Execution & Content Entities
+// ----------------------------------------------------------------------------
+
+model Documento {
+  id          String      @id @default(uuid())
+  projeto_id  String
+  missao_id   String?
+  pasta_id    String?
+  autor_id    String
+  tipo        String      @default("MARKDOWN")
+  conteudo    String      @db.Text
+  tags        String[]
+  ipfs_cid    String?     // CID do conteúdo (folha) na árvore IPFS
+  criado_em   DateTime    @default(now())
+  atualizado_em DateTime  @updatedAt
+
+  projeto     Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missao      Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
+  pasta       Pasta?      @relation(fields: [pasta_id], references: [id], onDelete: SetNull)
+  autor       User        @relation(fields: [autor_id], references: [id])
+}
+
+model Arquivo {
+  id          String      @id @default(uuid())
+  projeto_id  String
+  missao_id   String?
+  pasta_id    String?
+  nome        String
+  caminho     String
+  hash_sha256 String
+  ipfs_cid    String?     // CID do conteúdo (folha) na árvore IPFS — endereço de recuperação, não substitui hash_sha256
+  tamanho     Int
+  tipo_mime   String
+  enviado_por String
+  enviado_em  DateTime    @default(now())
+
+  projeto     Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missao      Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
+  pasta       Pasta?      @relation(fields: [pasta_id], references: [id], onDelete: SetNull)
+  entrega_id  String?
+  entrega     Entrega?    @relation(fields: [entrega_id], references: [id], onDelete: SetNull)
+}
+
+model Pasta {
+  id            String      @id @default(uuid())
+  projeto_id    String
+  missao_id     String?
+  pasta_pai_id  String?
+  nome          String
+  ipfs_cid      String?     // CID do diretório na árvore IPFS
+  criado_em     DateTime    @default(now())
+
+  projeto       Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missao        Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
+  pasta_pai     Pasta?      @relation("SubPastas", fields: [pasta_pai_id], references: [id], onDelete: Cascade)
+  subpastas     Pasta[]     @relation("SubPastas")
+  arquivos      Arquivo[]
+  documentos    Documento[]
+}
+
+model Entrega {
+  id          String      @id @default(uuid())
+  missao_id   String
+  autor_id    String
+  conteudo    String?     @db.Text
+  status      String      @default("EM_REVISAO") // EM_REVISAO, APROVADA, REJEITADA
+  criado_em   DateTime    @default(now())
+
+  missao      Missao      @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+  autor       User        @relation(fields: [autor_id], references: [id])
+  revisoes    Revisao[]
+  arquivos    Arquivo[]
+}
+
+model Revisao {
+  id          String      @id @default(uuid())
+  entrega_id  String
+  revisor_id  String
+  status      String      // APROVADO, REJEITADO
+  comentario  String?     @db.Text
+  criado_em   DateTime    @default(now())
+
+  entrega     Entrega     @relation(fields: [entrega_id], references: [id], onDelete: Cascade)
+  revisor     User        @relation(fields: [revisor_id], references: [id])
+}
+
+// ----------------------------------------------------------------------------
+// System Integrity Entities
+// ----------------------------------------------------------------------------
+
+model Permissao {
+  id           String      @id @default(uuid())
+  user_id      String
+  papel        String
+  workspace_id String?
+  projeto_id   String?
+
+  user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace    Workspace?  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  projeto      Projeto?    @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+}
+
+model LogAuditoria {
+  id               String   @id @default(uuid())
+  user_id          String?
+  acao             String
+  entidade         String
+  entidade_id      String
+  timestamp        DateTime @default(now())
+  dados_anteriores Json?
+  dados_novos      Json?
+
+  user             User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+}
+
+// ----------------------------------------------------------------------------
+// Customization Entities
+// ----------------------------------------------------------------------------
+
+model TipoProjeto {
+  id                 String              @id @default(uuid())
+  area_id            String
+  nome               String
+
+  area               Area                @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  tipos_missao       TipoMissao[]
+  campos_customizados CampoCustomizado[]
+}
+
+model TipoMissao {
+  id                 String              @id @default(uuid())
+  tipo_projeto_id    String
+  nome               String
+
+  tipo_projeto       TipoProjeto         @relation(fields: [tipo_projeto_id], references: [id], onDelete: Cascade)
+  campos_customizados CampoCustomizado[]
+}
+
+model CampoCustomizado {
+  id               String      @id @default(uuid())
+  nome_campo       String
+  tipo_dado        String      // TEXTO, NUMERO, DATA, SELECAO
+  obrigatorio      Boolean     @default(false)
+  tipo_projeto_id  String?
+  tipo_missao_id   String?
+
+  tipo_projeto     TipoProjeto? @relation(fields: [tipo_projeto_id], references: [id], onDelete: Cascade)
+  tipo_missao      TipoMissao?  @relation(fields: [tipo_missao_id], references: [id], onDelete: Cascade)
+  valores          ValorCampo[]
+}
+
+model ValorCampo {
+  id               String      @id @default(uuid())
+  entidade_tipo    String      // PROJETO ou MISSAO
+  projeto_id       String?
+  missao_id        String?
+  campo_id         String
+  valor            String      @db.Text
+
+  campo            CampoCustomizado @relation(fields: [campo_id], references: [id], onDelete: Cascade)
+  projeto          Projeto?         @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missao           Missao?          @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------------
+// Colaboração na Missão (comentários e checklist)
+// ----------------------------------------------------------------------------
+
+model ComentarioMissao {
+  id         String   @id @default(uuid())
+  missao_id  String
+  autor_id   String
+  texto      String   @db.Text
+  criado_em  DateTime @default(now())
+
+  missao     Missao   @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+  autor      User     @relation(fields: [autor_id], references: [id])
+}
+
+model ChecklistItem {
+  id         String   @id @default(uuid())
+  missao_id  String
+  texto      String
+  concluido  Boolean  @default(false)
+  ordem      Int      @default(0)
+  criado_em  DateTime @default(now())
+
+  missao     Missao   @relation(fields: [missao_id], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------------
+// Recuperação de senha
+// ----------------------------------------------------------------------------
+
+model TokenRecuperacaoSenha {
+  id         String    @id @default(uuid())
+  user_id    String
+  token_hash String    @unique
+  expira_em  DateTime
+  usado_em   DateTime?
+  criado_em  DateTime  @default(now())
+
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
