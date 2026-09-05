@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -20,10 +21,12 @@ import { ChecklistModule } from './checklist/checklist.module';
 import { ExportacaoModule } from './exportacao/exportacao.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { LaudoModule } from './laudo/laudo.module';
+import { IntegridadeModule } from './integridade/integridade.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     AuthModule,
     WorkspacesModule,
@@ -42,6 +45,7 @@ import { LaudoModule } from './laudo/laudo.module';
     ExportacaoModule,
     AuditoriaModule,
     LaudoModule,
+    IntegridadeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

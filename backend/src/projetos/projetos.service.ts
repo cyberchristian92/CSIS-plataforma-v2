@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { EVT_CONTEUDO_REMOVIDO, EVT_HIERARQUIA_ALTERADA } from '../integridade/integridade.events';
 import { CreateProjetoDto } from './dto/create-projeto.dto';
 import { UpdateProjetoDto } from './dto/update-projeto.dto';
 
@@ -9,6 +11,7 @@ export class ProjetosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async criar(areaId: string, dto: CreateProjetoDto, userId: string) {
@@ -32,6 +35,7 @@ export class ProjetosService {
       },
     });
     await this.auditoriaService.registrar(userId, 'CRIAR', 'Projeto', projeto.id, null, projeto);
+    this.eventos.emit(EVT_HIERARQUIA_ALTERADA, { tipo: 'projeto', id: projeto.id, userId });
     return projeto;
   }
 
@@ -82,6 +86,10 @@ export class ProjetosService {
     const anterior = await this.buscar(id);
     await this.prisma.projeto.delete({ where: { id } });
     await this.auditoriaService.registrar(userId, 'REMOVER', 'Projeto', id, anterior, null);
+    this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+      escopo: { pasta_id: null, missao_id: null, projeto_id: null, area_id: anterior.area_id, workspace_id: null },
+      userId,
+    });
     return { ok: true };
   }
 }

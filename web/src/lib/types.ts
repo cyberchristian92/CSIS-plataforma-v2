@@ -16,6 +16,7 @@ export interface Workspace {
   id: string;
   nome: string;
   descricao: string | null;
+  logo_data_url: string | null;
   ipfs_cid: string | null;
 }
 

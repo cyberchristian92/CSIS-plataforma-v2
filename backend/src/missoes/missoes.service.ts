@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { PALETA_HEX } from '../common/constants/paleta-cores';
+import { EVT_CONTEUDO_REMOVIDO, EVT_HIERARQUIA_ALTERADA } from '../integridade/integridade.events';
 import { CreateMissaoDto } from './dto/create-missao.dto';
 import { UpdateMissaoDto } from './dto/update-missao.dto';
 
@@ -16,6 +18,7 @@ export class MissoesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async criar(projetoId: string, dto: CreateMissaoDto, userId: string) {
@@ -44,6 +47,7 @@ export class MissoesService {
       include: INCLUDE_PADRAO,
     });
     await this.auditoriaService.registrar(userId, 'CRIAR', 'Missao', missao.id, null, missao);
+    this.eventos.emit(EVT_HIERARQUIA_ALTERADA, { tipo: 'missao', id: missao.id, userId });
     return missao;
   }
 
@@ -211,6 +215,10 @@ export class MissoesService {
     const anterior = await this.buscar(id);
     await this.prisma.missao.delete({ where: { id } });
     await this.auditoriaService.registrar(userId, 'REMOVER', 'Missao', id, anterior, null);
+    this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+      escopo: { pasta_id: null, missao_id: null, projeto_id: anterior.projeto_id, area_id: null, workspace_id: null },
+      userId,
+    });
     return { ok: true };
   }
 }

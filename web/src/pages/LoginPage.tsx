@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Logo, useNomeExibicao } from "@/components/Logo";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const nomeExibicao = useNomeExibicao();
 
   if (user) {
     const from = (location.state as { from?: string })?.from ?? "/";
@@ -38,8 +40,8 @@ export default function LoginPage() {
       {/* Painel do formulário */}
       <div className="flex w-full flex-col justify-center px-10 sm:px-16 lg:w-1/2 xl:px-24">
         <div className="mb-14 flex items-center gap-2.5">
-          <img src="/csis-mark.svg" alt="CSIS" className="h-9 w-9 rounded bg-white p-0.5" />
-          <span className="text-2xl font-bold tracking-wide text-primary">CSIS</span>
+          <Logo className="h-9 w-9" />
+          <span className="text-2xl font-bold tracking-wide text-primary">{nomeExibicao}</span>
         </div>
 
         <h1 className="text-3xl font-bold">Entrar</h1>
@@ -76,7 +78,7 @@ export default function LoginPage() {
 
       {/* Painel de marca */}
       <div className="hidden w-1/2 items-center justify-center bg-card lg:flex">
-        <img src="/csis-mark.svg" alt="" className="h-80 w-80 rounded-2xl bg-white/90 p-8" />
+        <Logo className="h-80 w-80 rounded-2xl bg-white/90 p-8" />
       </div>
     </div>
   );

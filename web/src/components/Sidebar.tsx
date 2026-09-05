@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import type { PapelGlobal } from "@/lib/types";
 import { Avatar } from "./ui/avatar";
+import { Logo, useNomeExibicao } from "./Logo";
 
 // Sidebar organizada pelo método PARA (Projetos / Áreas / Recursos /
 // Arquivamento) — não é uma árvore Workspace>Área>Projeto tipo Drive, é a
@@ -55,6 +56,7 @@ const GROUPS: NavGroup[] = [
       { to: "/recursos", label: "Arquivos da Empresa" },
       { to: "/usuarios", label: "Gestão de Usuários" },
       { to: "/auditoria", label: "Auditoria Global" },
+      { to: "/configuracoes", label: "Configurações", roles: ["ADMIN"] },
     ],
   },
   {
@@ -67,6 +69,7 @@ const GROUPS: NavGroup[] = [
 export function Sidebar() {
   const { user, logout } = useAuth();
   const papel = user?.papel_global;
+  const nomeExibicao = useNomeExibicao();
 
   const visibleGroups = GROUPS.filter((g) => !g.roles || (papel && g.roles.includes(papel)))
     .map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || (papel && i.roles.includes(papel))) }))
@@ -75,8 +78,8 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-background">
       <div className="flex h-16 items-center gap-2 border-b border-border px-4">
-        <img src="/csis-mark.svg" alt="CSIS" className="h-7 w-7 rounded bg-white p-0.5" />
-        <span className="text-lg font-bold tracking-wide text-primary">CSIS</span>
+        <Logo className="h-7 w-7" />
+        <span className="truncate text-lg font-bold tracking-wide text-primary">{nomeExibicao}</span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">

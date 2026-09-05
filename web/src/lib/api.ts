@@ -73,6 +73,14 @@ export const api = {
     listar: () => get<Workspace[]>("/workspaces"),
     buscar: (id: string) => get<Workspace>(`/workspaces/${id}`),
     criar: (nome: string, descricao?: string) => post<Workspace>("/workspaces", { nome, descricao }),
+    atualizar: (id: string, dto: { nome?: string; descricao?: string; logo_data_url?: string | null }) =>
+      patch<Workspace>(`/workspaces/${id}`, dto),
+  },
+
+  // Sem autenticação — usado pela tela de Login e por qualquer lugar que
+  // precise mostrar nome/logo antes de existir sessão.
+  branding: {
+    obter: () => get<{ nome: string | null; logo_data_url: string | null }>("/branding"),
   },
 
   areas: {
@@ -219,6 +227,15 @@ export const api = {
       `/arquivos/${id}/verificar`,
     ),
     renomear: (id: string, nome: string) => patch<Arquivo>(`/arquivos/${id}`, { nome }),
+  },
+
+  integridade: {
+    consultar: (tipo: "workspace" | "area" | "projeto" | "missao" | "pasta", id: string) =>
+      get<{ id: string; ipfs_cid: string | null }>(`/integridade/${tipo}/${id}`),
+    recalcularTudo: () =>
+      post<{ arquivos: number; documentos: number; pastas: number; missoes: number; projetos: number; areas: number; workspaces: number }>(
+        "/integridade/recalcular-tudo",
+      ),
   },
 
   auditoria: {

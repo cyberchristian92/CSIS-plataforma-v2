@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { EVT_CONTEUDO_REMOVIDO, EVT_PASTA_ALTERADA } from '../integridade/integridade.events';
 import { CreatePastaDto } from './dto/create-pasta.dto';
 import { UpdatePastaDto } from './dto/update-pasta.dto';
 
@@ -9,6 +11,7 @@ export class PastasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async criar(projetoId: string, dto: CreatePastaDto, userId: string) {
@@ -21,6 +24,7 @@ export class PastasService {
       },
     });
     await this.auditoriaService.registrar(userId, 'CRIAR', 'Pasta', pasta.id, null, pasta);
+    this.eventos.emit(EVT_PASTA_ALTERADA, { id: pasta.id, userId });
     return pasta;
   }
 
@@ -39,6 +43,7 @@ export class PastasService {
       data: { workspace_id: workspaceId, pasta_pai_id: dto.pastaPaiId, nome: dto.nome },
     });
     await this.auditoriaService.registrar(userId, 'CRIAR', 'Pasta', pasta.id, null, pasta);
+    this.eventos.emit(EVT_PASTA_ALTERADA, { id: pasta.id, userId });
     return pasta;
   }
 
@@ -54,6 +59,7 @@ export class PastasService {
       data: { area_id: areaId, pasta_pai_id: dto.pastaPaiId, nome: dto.nome },
     });
     await this.auditoriaService.registrar(userId, 'CRIAR', 'Pasta', pasta.id, null, pasta);
+    this.eventos.emit(EVT_PASTA_ALTERADA, { id: pasta.id, userId });
     return pasta;
   }
 
@@ -79,6 +85,22 @@ export class PastasService {
       data: { nome: dto.nome, pasta_pai_id: dto.pastaPaiId },
     });
     await this.auditoriaService.registrar(userId, 'ATUALIZAR', 'Pasta', id, anterior, atualizado);
+    this.eventos.emit(EVT_PASTA_ALTERADA, { id, userId });
+    // Mover a pasta pra outro pai (ou pra raiz) esvazia o pai antigo — ele
+    // também precisa recalcular, senão fica com um hash que ainda conta um
+    // filho que já foi embora.
+    if (dto.pastaPaiId !== undefined && dto.pastaPaiId !== anterior.pasta_pai_id) {
+      this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+        escopo: {
+          pasta_id: anterior.pasta_pai_id,
+          missao_id: anterior.pasta_pai_id ? null : anterior.missao_id,
+          projeto_id: anterior.pasta_pai_id ? null : anterior.projeto_id,
+          area_id: anterior.pasta_pai_id ? null : anterior.area_id,
+          workspace_id: anterior.pasta_pai_id ? null : anterior.workspace_id,
+        },
+        userId,
+      });
+    }
     return atualizado;
   }
 
@@ -96,6 +118,19 @@ export class PastasService {
       this.prisma.pasta.delete({ where: { id } }),
     ]);
     await this.auditoriaService.registrar(userId, 'REMOVER', 'Pasta', id, anterior, null);
+    // Sobe a partir de onde a pasta removida vivia — cobre tanto "ela sumiu"
+    // quanto "os filhos dela agora estão direto aqui", já que os dois efeitos
+    // acontecem no mesmo pai.
+    this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+      escopo: {
+        pasta_id: anterior.pasta_pai_id,
+        missao_id: anterior.pasta_pai_id ? null : anterior.missao_id,
+        projeto_id: anterior.pasta_pai_id ? null : anterior.projeto_id,
+        area_id: anterior.pasta_pai_id ? null : anterior.area_id,
+        workspace_id: anterior.pasta_pai_id ? null : anterior.workspace_id,
+      },
+      userId,
+    });
     return { ok: true };
   }
 }

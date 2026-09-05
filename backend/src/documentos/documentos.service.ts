@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { EVT_CONTEUDO_ALTERADO, EVT_CONTEUDO_REMOVIDO } from '../integridade/integridade.events';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { UpdateDocumentoDto } from './dto/update-documento.dto';
 
@@ -9,6 +11,7 @@ export class DocumentosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async criar(projetoId: string, dto: CreateDocumentoDto, autorId: string) {
@@ -23,6 +26,7 @@ export class DocumentosService {
       },
     });
     await this.auditoriaService.registrar(autorId, 'CRIAR', 'Documento', documento.id, null, documento);
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'documento', id: documento.id, userId: autorId });
     return documento;
   }
 
@@ -42,6 +46,7 @@ export class DocumentosService {
       data: { workspace_id: workspaceId, pasta_id: dto.pastaId === 'raiz' ? null : dto.pastaId, autor_id: autorId, conteudo: dto.conteudo, tags: dto.tags ?? [] },
     });
     await this.auditoriaService.registrar(autorId, 'CRIAR', 'Documento', documento.id, null, documento);
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'documento', id: documento.id, userId: autorId });
     return documento;
   }
 
@@ -57,6 +62,7 @@ export class DocumentosService {
       data: { area_id: areaId, pasta_id: dto.pastaId === 'raiz' ? null : dto.pastaId, autor_id: autorId, conteudo: dto.conteudo, tags: dto.tags ?? [] },
     });
     await this.auditoriaService.registrar(autorId, 'CRIAR', 'Documento', documento.id, null, documento);
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'documento', id: documento.id, userId: autorId });
     return documento;
   }
 
@@ -82,6 +88,7 @@ export class DocumentosService {
       data: { conteudo: dto.conteudo, tags: dto.tags, pasta_id: dto.pastaId === 'raiz' ? null : dto.pastaId },
     });
     await this.auditoriaService.registrar(userId, 'ATUALIZAR', 'Documento', id, anterior, atualizado);
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'documento', id, userId });
     return atualizado;
   }
 
@@ -89,6 +96,18 @@ export class DocumentosService {
     const anterior = await this.buscar(id);
     await this.prisma.documento.delete({ where: { id } });
     await this.auditoriaService.registrar(userId, 'REMOVER', 'Documento', id, anterior, null);
+    // Não há mais o próprio nó pra recalcular — sobe direto a partir do
+    // escopo em que ele vivia (com o filho já removido do banco).
+    this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+      escopo: {
+        pasta_id: anterior.pasta_id,
+        missao_id: anterior.missao_id,
+        projeto_id: anterior.projeto_id,
+        area_id: anterior.area_id,
+        workspace_id: anterior.workspace_id,
+      },
+      userId,
+    });
     return { ok: true };
   }
 }

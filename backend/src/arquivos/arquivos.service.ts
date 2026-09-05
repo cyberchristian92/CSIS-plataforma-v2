@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { EVT_CONTEUDO_ALTERADO } from '../integridade/integridade.events';
 import { sha256Buffer } from './utils/hash.util';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
@@ -13,6 +15,7 @@ export class ArquivosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async enviar(
@@ -52,6 +55,7 @@ export class ArquivosService {
       hash_sha256: arquivo.hash_sha256,
       tamanho: arquivo.tamanho,
     });
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id: arquivo.id, userId: enviadoPor });
 
     return arquivo;
   }
@@ -77,6 +81,7 @@ export class ArquivosService {
       data: { id, workspace_id: workspaceId, pasta_id: pastaId, nome: file.originalname, caminho, hash_sha256: hash, tamanho: file.size, tipo_mime: file.mimetype, enviado_por: enviadoPor },
     });
     await this.auditoriaService.registrar(enviadoPor, 'UPLOAD', 'Arquivo', arquivo.id, null, { nome: arquivo.nome, hash_sha256: arquivo.hash_sha256 });
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id: arquivo.id, userId: enviadoPor });
     return arquivo;
   }
 
@@ -97,6 +102,7 @@ export class ArquivosService {
       data: { id, area_id: areaId, pasta_id: pastaId, nome: file.originalname, caminho, hash_sha256: hash, tamanho: file.size, tipo_mime: file.mimetype, enviado_por: enviadoPor },
     });
     await this.auditoriaService.registrar(enviadoPor, 'UPLOAD', 'Arquivo', arquivo.id, null, { nome: arquivo.nome, hash_sha256: arquivo.hash_sha256 });
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id: arquivo.id, userId: enviadoPor });
     return arquivo;
   }
 
@@ -131,6 +137,10 @@ export class ArquivosService {
     const anterior = await this.buscar(id);
     const atualizado = await this.prisma.arquivo.update({ where: { id }, data: { nome: novoNome } });
     await this.auditoriaService.registrar(userId, 'RENOMEAR', 'Arquivo', id, { nome: anterior.nome }, { nome: novoNome });
+    // O nome entra na composição do hash do diretório-pai (ver
+    // IntegridadeService.recalcularPasta) — mesmo sem o conteúdo mudar, o
+    // hash do pai precisa refletir o novo nome.
+    this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id, userId });
     return atualizado;
   }
 }

@@ -18,6 +18,7 @@ import AreasPage from "@/pages/AreasPage";
 import AreaPage from "@/pages/AreaPage";
 import ProjectTypesPage from "@/pages/ProjectTypesPage";
 import ResourcesPage from "@/pages/ResourcesPage";
+import SettingsPage from "@/pages/SettingsPage";
 import UsersPage from "@/pages/UsersPage";
 import AuditPage from "@/pages/AuditPage";
 import ArchivedProjectsPage from "@/pages/ArchivedProjectsPage";
@@ -101,6 +102,14 @@ export default function App() {
           element={
             <RequireRole roles={["ADMIN", "LIDER"]}>
               <ResourcesPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/configuracoes"
+          element={
+            <RequireRole roles={["ADMIN"]}>
+              <SettingsPage />
             </RequireRole>
           }
         />

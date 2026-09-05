@@ -54,6 +54,10 @@ model Workspace {
   id          String      @id @default(uuid())
   nome        String
   descricao   String?
+  // Data URI (base64) da logo — permite white-label por instância sem
+  // precisar de um serviço de storage de arquivo público separado; logos
+  // são pequenos o suficiente pra viver direto na linha do Workspace.
+  logo_data_url String?   @db.Text
   ipfs_cid    String?     // CID do diretório raiz do Workspace na árvore IPFS
   areas       Area[]
   permissoes  Permissao[]
