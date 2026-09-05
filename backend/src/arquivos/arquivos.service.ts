@@ -67,6 +67,46 @@ export class ArquivosService {
     });
   }
 
+  async enviarEmWorkspace(workspaceId: string, file: Express.Multer.File, enviadoPor: string, pastaId: string | undefined) {
+    const hash = sha256Buffer(file.buffer);
+    const id = randomUUID();
+    const caminho = join(UPLOADS_DIR, `${id}-${file.originalname}`);
+    await mkdir(UPLOADS_DIR, { recursive: true });
+    await writeFile(caminho, file.buffer);
+    const arquivo = await this.prisma.arquivo.create({
+      data: { id, workspace_id: workspaceId, pasta_id: pastaId, nome: file.originalname, caminho, hash_sha256: hash, tamanho: file.size, tipo_mime: file.mimetype, enviado_por: enviadoPor },
+    });
+    await this.auditoriaService.registrar(enviadoPor, 'UPLOAD', 'Arquivo', arquivo.id, null, { nome: arquivo.nome, hash_sha256: arquivo.hash_sha256 });
+    return arquivo;
+  }
+
+  listarPorWorkspace(workspaceId: string, pastaId?: string) {
+    return this.prisma.arquivo.findMany({
+      where: { workspace_id: workspaceId, ...(pastaId !== undefined ? { pasta_id: pastaId === 'raiz' ? null : pastaId } : {}) },
+      orderBy: { enviado_em: 'desc' },
+    });
+  }
+
+  async enviarEmArea(areaId: string, file: Express.Multer.File, enviadoPor: string, pastaId: string | undefined) {
+    const hash = sha256Buffer(file.buffer);
+    const id = randomUUID();
+    const caminho = join(UPLOADS_DIR, `${id}-${file.originalname}`);
+    await mkdir(UPLOADS_DIR, { recursive: true });
+    await writeFile(caminho, file.buffer);
+    const arquivo = await this.prisma.arquivo.create({
+      data: { id, area_id: areaId, pasta_id: pastaId, nome: file.originalname, caminho, hash_sha256: hash, tamanho: file.size, tipo_mime: file.mimetype, enviado_por: enviadoPor },
+    });
+    await this.auditoriaService.registrar(enviadoPor, 'UPLOAD', 'Arquivo', arquivo.id, null, { nome: arquivo.nome, hash_sha256: arquivo.hash_sha256 });
+    return arquivo;
+  }
+
+  listarPorArea(areaId: string, pastaId?: string) {
+    return this.prisma.arquivo.findMany({
+      where: { area_id: areaId, ...(pastaId !== undefined ? { pasta_id: pastaId === 'raiz' ? null : pastaId } : {}) },
+      orderBy: { enviado_em: 'desc' },
+    });
+  }
+
   async buscar(id: string) {
     const arquivo = await this.prisma.arquivo.findUnique({ where: { id } });
     if (!arquivo) {

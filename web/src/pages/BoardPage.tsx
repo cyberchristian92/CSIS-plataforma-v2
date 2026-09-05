@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,12 +14,16 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Tag } from "lucide-react";
+import { Pencil, Plus, Tag } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Coluna, Missao } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { usePromptDialog } from "@/components/ui/prompt-dialog";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 // Board Kanban livre — tão amplo quanto o Trello: colunas e cards podem ser
 // reorganizados sem restrição visual. Mover um card aqui só atualiza a
@@ -32,6 +36,10 @@ export default function BoardPage() {
   const { projetoId = "" } = useParams();
   const qc = useQueryClient();
   const [activeMissao, setActiveMissao] = useState<Missao | null>(null);
+  const [colunaEditando, setColunaEditando] = useState<Coluna | null>(null);
+  const { user } = useAuth();
+  const podeGerenciarMissoes = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
+  const { ask, dialog: promptDialog } = usePromptDialog();
 
   const { data: colunas } = useQuery({
     queryKey: ["colunas", projetoId],
@@ -63,8 +71,8 @@ export default function BoardPage() {
   });
 
   const criarColuna = useMutation({
-    mutationFn: () => {
-      const nome = window.prompt("Nome da coluna:");
+    mutationFn: async () => {
+      const nome = await ask("Nome da coluna");
       if (!nome) return Promise.reject(new Error("cancelado"));
       return api.colunas.criar(projetoId, nome);
     },
@@ -72,8 +80,8 @@ export default function BoardPage() {
   });
 
   const criarMissao = useMutation({
-    mutationFn: (colunaId?: string) => {
-      const titulo = window.prompt("Título da missão:");
+    mutationFn: async (colunaId?: string) => {
+      const titulo = await ask("Título da missão");
       if (!titulo) return Promise.reject(new Error("cancelado"));
       return api.missoes.criar(projetoId, { titulo, colunaId });
     },
@@ -122,9 +130,11 @@ export default function BoardPage() {
         <Button size="sm" variant="ghost" onClick={() => criarColuna.mutate()}>
           <Plus className="h-4 w-4" /> Nova coluna
         </Button>
-        <Button onClick={() => criarMissao.mutate(colunas?.[0]?.id)}>
-          <Plus className="h-4 w-4" /> Nova Missão
-        </Button>
+        {podeGerenciarMissoes && (
+          <Button onClick={() => criarMissao.mutate(colunas?.[0]?.id)}>
+            <Plus className="h-4 w-4" /> Nova Missão
+          </Button>
+        )}
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -134,7 +144,8 @@ export default function BoardPage() {
               key={coluna.id}
               coluna={coluna}
               missoes={(missoes ?? []).filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
-              onNovaMissao={() => criarMissao.mutate(coluna.id)}
+              onNovaMissao={podeGerenciarMissoes ? () => criarMissao.mutate(coluna.id) : undefined}
+              onEditar={() => setColunaEditando(coluna)}
             />
           ))}
 
@@ -143,12 +154,16 @@ export default function BoardPage() {
               coluna={{ id: "__sem_coluna__", nome: "Sem coluna", ordem: -1, limite_wip: null, projeto_id: projetoId }}
               missoes={semColuna}
               onNovaMissao={undefined}
+              onEditar={() => {}}
             />
           )}
         </div>
 
         <DragOverlay>{activeMissao && <MissaoCard missao={activeMissao} overlay />}</DragOverlay>
       </DndContext>
+
+      <EditarColunaDialog coluna={colunaEditando} onClose={() => setColunaEditando(null)} />
+      {promptDialog}
     </div>
   );
 }
@@ -157,13 +172,16 @@ function ColunaColumn({
   coluna,
   missoes,
   onNovaMissao,
+  onEditar,
 }: {
   coluna: Coluna;
   missoes: Missao[];
   onNovaMissao: (() => void) | undefined;
+  onEditar: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const acimaDoLimite = !!coluna.limite_wip && missoes.length > coluna.limite_wip;
+  const editavel = coluna.id !== "__sem_coluna__";
 
   return (
     <div
@@ -181,6 +199,11 @@ function ColunaColumn({
             {coluna.limite_wip ? `/${coluna.limite_wip}` : ""}
           </span>
         </div>
+        {editavel && (
+          <button onClick={onEditar} className="text-muted-foreground hover:text-foreground">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <SortableContext items={missoes.map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -200,6 +223,66 @@ function ColunaColumn({
         </button>
       )}
     </div>
+  );
+}
+
+function EditarColunaDialog({ coluna, onClose }: { coluna: Coluna | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [nome, setNome] = useState("");
+  const [limiteWip, setLimiteWip] = useState("");
+
+  useEffect(() => {
+    if (coluna) {
+      setNome(coluna.nome);
+      setLimiteWip(coluna.limite_wip?.toString() ?? "");
+    }
+  }, [coluna]);
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      api.colunas.atualizar(coluna!.id, { nome, limiteWip: limiteWip.trim() ? Number(limiteWip) : null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["colunas", coluna?.projeto_id] });
+      onClose();
+    },
+  });
+
+  const remover = useMutation({
+    mutationFn: () => api.colunas.remover(coluna!.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["colunas", coluna?.projeto_id] });
+      qc.invalidateQueries({ queryKey: ["missoes", coluna?.projeto_id] });
+      onClose();
+    },
+  });
+
+  return (
+    <Dialog open={!!coluna} onClose={onClose}>
+      <h2 className="mb-4 text-lg font-bold">Editar coluna</h2>
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Nome</label>
+          <Input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Limite de WIP (vazio = sem limite)</label>
+          <Input type="number" min={1} value={limiteWip} onChange={(e) => setLimiteWip(e.target.value)} />
+        </div>
+        <div className="mt-2 flex justify-between">
+          <Button variant="destructive" size="sm" onClick={() => remover.mutate()}>
+            Excluir coluna
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button disabled={!nome.trim() || salvar.isPending} onClick={() => salvar.mutate()}>
+              Salvar
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

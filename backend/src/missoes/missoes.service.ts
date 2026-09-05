@@ -63,6 +63,25 @@ export class MissoesService {
     });
   }
 
+  // Fila de Revisão: todas as missões aguardando aprovação, com a entrega
+  // mais recente anexada — ADMIN/LIDER/REVISOR revisam de qualquer projeto
+  // (a trava de SoD por autor continua sendo aplicada em revisoes.service.ts).
+  listarEmRevisao() {
+    return this.prisma.missao.findMany({
+      where: { status: 'EM_REVISAO' },
+      orderBy: { prazo: 'asc' },
+      include: {
+        ...INCLUDE_PADRAO,
+        projeto: { select: { id: true, nome: true } },
+        entregas: {
+          orderBy: { criado_em: 'desc' },
+          take: 1,
+          include: { autor: { select: { id: true, nome: true, email: true } } },
+        },
+      },
+    });
+  }
+
   async buscar(id: string) {
     const missao = await this.prisma.missao.findUnique({
       where: { id },

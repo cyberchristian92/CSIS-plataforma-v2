@@ -1,24 +1,31 @@
 import { useState, type ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut } from "lucide-react";
+import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import type { PapelGlobal } from "@/lib/types";
 import { Avatar } from "./ui/avatar";
 
 // Sidebar organizada pelo método PARA (Projetos / Áreas / Recursos /
 // Arquivamento) — não é uma árvore Workspace>Área>Projeto tipo Drive, é a
 // mesma taxonomia de navegação do protótipo original (ver figuras/prototipo
 // no TCC). Cada grupo é uma seção do PARA, não um nível hierárquico de dados.
+//
+// Áreas/Recursos ficam ocultos para REVISOR/COLABORADOR (só ADMIN/LIDER
+// gerenciam ativos organizacionais), replicando o comportamento do app
+// Flutter original.
 
 interface NavItem {
   to: string;
   label: string;
+  roles?: PapelGlobal[];
 }
 
 interface NavGroup {
   label: string;
   icon: ComponentType<{ className?: string }>;
   items: NavItem[];
+  roles?: PapelGlobal[];
 }
 
 const GROUPS: NavGroup[] = [
@@ -28,11 +35,13 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/projetos", label: "Projetos Abertos" },
       { to: "/minhas-missoes", label: "Minhas Missões" },
+      { to: "/fila-revisao", label: "Fila de Revisão", roles: ["ADMIN", "LIDER", "REVISOR"] },
     ],
   },
   {
     label: "Áreas",
     icon: Building2,
+    roles: ["ADMIN", "LIDER"],
     items: [
       { to: "/areas", label: "Gestão de Áreas" },
       { to: "/tipos-projeto", label: "Tipos de Projeto" },
@@ -41,7 +50,9 @@ const GROUPS: NavGroup[] = [
   {
     label: "Recursos",
     icon: Settings2,
+    roles: ["ADMIN", "LIDER"],
     items: [
+      { to: "/recursos", label: "Arquivos da Empresa" },
       { to: "/usuarios", label: "Gestão de Usuários" },
       { to: "/auditoria", label: "Auditoria Global" },
     ],
@@ -55,6 +66,11 @@ const GROUPS: NavGroup[] = [
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const papel = user?.papel_global;
+
+  const visibleGroups = GROUPS.filter((g) => !g.roles || (papel && g.roles.includes(papel)))
+    .map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || (papel && i.roles.includes(papel))) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-background">
@@ -77,7 +93,7 @@ export function Sidebar() {
           <LayoutGrid className="h-4 w-4" /> Painel
         </NavLink>
 
-        {GROUPS.map((group) => (
+        {visibleGroups.map((group) => (
           <NavGroupSection key={group.label} group={group} />
         ))}
       </nav>

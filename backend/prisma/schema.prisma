@@ -57,6 +57,13 @@ model Workspace {
   ipfs_cid    String?     // CID do diretório raiz do Workspace na árvore IPFS
   areas       Area[]
   permissoes  Permissao[]
+
+  // Pastas/arquivos/documentos soltos direto no Workspace — a base de
+  // "Recursos" (logos, templates, prompts): ativos da empresa que não
+  // pertencem a nenhuma Área/Projeto específico.
+  pastas      Pasta[]
+  arquivos    Arquivo[]
+  documentos  Documento[]
 }
 
 model Area {
@@ -69,6 +76,13 @@ model Area {
   workspace    Workspace   @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   projetos     Projeto[]
   tipos_proj   TipoProjeto[]
+
+  // Pastas/arquivos/documentos direto na Área (ex.: uma pasta "Templates de
+  // Marketing" dentro da Área "Marketing") — não é o mesmo que os Projetos
+  // da área, que continuam sendo listados separadamente como Projeto[].
+  pastas       Pasta[]
+  arquivos     Arquivo[]
+  documentos   Documento[]
 }
 
 model Projeto {
@@ -173,28 +187,43 @@ model MissaoResponsavel {
 // Execution & Content Entities
 // ----------------------------------------------------------------------------
 
-model Documento {
-  id          String      @id @default(uuid())
-  projeto_id  String
-  missao_id   String?
-  pasta_id    String?
-  autor_id    String
-  tipo        String      @default("MARKDOWN")
-  conteudo    String      @db.Text
-  tags        String[]
-  ipfs_cid    String?     // CID do conteúdo (folha) na árvore IPFS
-  criado_em   DateTime    @default(now())
-  atualizado_em DateTime  @updatedAt
+// Documento, Arquivo e Pasta são contêineres genéricos: podem pertencer a um
+// Workspace (Recursos: logos, templates, prompts da empresa), a uma Área
+// (ativos daquela área, à parte dos Projetos que ela contém) ou a um Projeto
+// (como já era). Exatamente um entre workspace_id/area_id/projeto_id deve
+// estar preenchido (ou nenhum, se for filho de outra Pasta via
+// pasta_pai_id) — validado na camada de serviço, não como constraint de
+// banco. Isso é o que permite "gerenciar a empresa inteira" com o mesmo
+// conjunto de entidades, em vez de criar um modelo novo por caso de uso.
 
-  projeto     Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
-  missao      Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
-  pasta       Pasta?      @relation(fields: [pasta_id], references: [id], onDelete: SetNull)
-  autor       User        @relation(fields: [autor_id], references: [id])
+model Documento {
+  id            String      @id @default(uuid())
+  workspace_id  String?
+  area_id       String?
+  projeto_id    String?
+  missao_id     String?
+  pasta_id      String?
+  autor_id      String
+  tipo          String      @default("MARKDOWN")
+  conteudo      String      @db.Text
+  tags          String[]
+  ipfs_cid      String?     // CID do conteúdo (folha) na árvore IPFS
+  criado_em     DateTime    @default(now())
+  atualizado_em DateTime    @updatedAt
+
+  workspace     Workspace?  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  area          Area?       @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  projeto       Projeto?    @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  missao        Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
+  pasta         Pasta?      @relation(fields: [pasta_id], references: [id], onDelete: SetNull)
+  autor         User        @relation(fields: [autor_id], references: [id])
 }
 
 model Arquivo {
   id          String      @id @default(uuid())
-  projeto_id  String
+  workspace_id String?
+  area_id     String?
+  projeto_id  String?
   missao_id   String?
   pasta_id    String?
   nome        String
@@ -206,7 +235,9 @@ model Arquivo {
   enviado_por String
   enviado_em  DateTime    @default(now())
 
-  projeto     Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  workspace   Workspace?  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  area        Area?       @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  projeto     Projeto?    @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
   missao      Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
   pasta       Pasta?      @relation(fields: [pasta_id], references: [id], onDelete: SetNull)
   entrega_id  String?
@@ -215,14 +246,18 @@ model Arquivo {
 
 model Pasta {
   id            String      @id @default(uuid())
-  projeto_id    String
+  workspace_id  String?
+  area_id       String?
+  projeto_id    String?
   missao_id     String?
   pasta_pai_id  String?
   nome          String
   ipfs_cid      String?     // CID do diretório na árvore IPFS
   criado_em     DateTime    @default(now())
 
-  projeto       Projeto     @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
+  workspace     Workspace?  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  area          Area?       @relation(fields: [area_id], references: [id], onDelete: Cascade)
+  projeto       Projeto?    @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
   missao        Missao?     @relation(fields: [missao_id], references: [id], onDelete: SetNull)
   pasta_pai     Pasta?      @relation("SubPastas", fields: [pasta_pai_id], references: [id], onDelete: Cascade)
   subpastas     Pasta[]     @relation("SubPastas")

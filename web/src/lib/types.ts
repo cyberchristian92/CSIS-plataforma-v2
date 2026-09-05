@@ -57,6 +57,8 @@ export interface Missao {
   cor_capa: string | null;
   responsaveis?: { user: User }[];
   labels?: { label: MissaoLabel }[];
+  projeto?: { id: string; nome: string };
+  entregas?: Entrega[];
 }
 
 export interface Coluna {
@@ -74,9 +76,15 @@ export interface MissaoLabel {
   cor: string;
 }
 
+// Escopo mutuamente exclusivo: exatamente um de projeto_id/area_id/workspace_id
+// é preenchido (ver backend/prisma/schema.prisma e pastas.service.ts) — assim
+// a mesma entidade Pasta serve Projetos, Áreas ("Marketing" etc) e Recursos
+// (nível Workspace, ex: Logos/Templates/Prompts).
 export interface Pasta {
   id: string;
-  projeto_id: string;
+  projeto_id: string | null;
+  area_id: string | null;
+  workspace_id: string | null;
   missao_id: string | null;
   pasta_pai_id: string | null;
   nome: string;
@@ -86,7 +94,9 @@ export interface Pasta {
 
 export interface Arquivo {
   id: string;
-  projeto_id: string;
+  projeto_id: string | null;
+  area_id: string | null;
+  workspace_id: string | null;
   missao_id: string | null;
   pasta_id: string | null;
   nome: string;
@@ -109,7 +119,9 @@ export interface LogAuditoria {
 
 export interface Documento {
   id: string;
-  projeto_id: string;
+  projeto_id: string | null;
+  area_id: string | null;
+  workspace_id: string | null;
   missao_id: string | null;
   pasta_id: string | null;
   autor_id: string;
@@ -119,4 +131,46 @@ export interface Documento {
   ipfs_cid: string | null;
   criado_em: string;
   atualizado_em: string;
+}
+
+export type EntregaStatus = "EM_REVISAO" | "APROVADA" | "REJEITADA";
+
+export interface Entrega {
+  id: string;
+  missao_id: string;
+  autor_id: string;
+  conteudo: string;
+  status: EntregaStatus;
+  criado_em: string;
+  autor?: { id: string; nome: string; email: string };
+  revisoes?: Revisao[];
+}
+
+export type RevisaoStatus = "APROVADO" | "REJEITADO";
+
+export interface Revisao {
+  id: string;
+  entrega_id: string;
+  revisor_id: string;
+  status: RevisaoStatus;
+  comentario: string | null;
+  criado_em: string;
+  revisor?: { id: string; nome: string; email: string };
+}
+
+export interface Comentario {
+  id: string;
+  missao_id: string;
+  autor_id: string;
+  texto: string;
+  criado_em: string;
+  autor?: { id: string; nome: string };
+}
+
+export interface ChecklistItem {
+  id: string;
+  missao_id: string;
+  texto: string;
+  concluido: boolean;
+  ordem: number;
 }

@@ -1,13 +1,17 @@
 import type {
   Area,
   Arquivo,
+  ChecklistItem,
   Coluna,
+  Comentario,
   Documento,
+  Entrega,
   LogAuditoria,
   Missao,
   MissaoLabel,
   Pasta,
   Projeto,
+  Revisao,
   User,
   Workspace,
 } from "./types";
@@ -56,6 +60,13 @@ export const api = {
     logout: () => post<{ ok: boolean }>("/auth/logout"),
     me: () => get<User>("/auth/me"),
     listarUsuarios: () => get<User[]>("/auth/usuarios"),
+    atualizarPapel: (id: string, papelGlobal: User["papel_global"]) =>
+      patch<User>(`/auth/usuarios/${id}/papel`, { papelGlobal }),
+    registrar: (nome: string, email: string, senha: string, papelGlobal?: User["papel_global"]) =>
+      post<User>("/auth/register", { nome, email, senha, papelGlobal }),
+    esqueciSenha: (email: string) => post<{ ok: boolean }>("/auth/esqueci-senha", { email }),
+    redefinirSenha: (token: string, novaSenha: string) =>
+      post<{ ok: boolean }>("/auth/redefinir-senha", { token, novaSenha }),
   },
 
   workspaces: {
@@ -100,25 +111,61 @@ export const api = {
   missoes: {
     listarPorProjeto: (projetoId: string) => get<Missao[]>(`/projetos/${projetoId}/missoes`),
     minhas: () => get<Missao[]>("/missoes/minhas"),
+    emRevisao: () => get<Missao[]>("/missoes/em-revisao"),
     buscar: (id: string) => get<Missao>(`/missoes/${id}`),
     criar: (projetoId: string, dto: { titulo: string; descricao?: string; valor_bounty?: number; colunaId?: string }) =>
       post<Missao>(`/projetos/${projetoId}/missoes`, dto),
     mover: (id: string, colunaId: string | null, ordem: number) =>
       patch<Missao>(`/missoes/${id}/mover`, { colunaId, ordem }),
     atualizarCapa: (id: string, corCapa: string | null) => patch<Missao>(`/missoes/${id}/capa`, { corCapa }),
+    atualizarLabels: (id: string, labelIds: string[]) => patch<Missao>(`/missoes/${id}/labels`, { labelIds }),
     atualizarTags: (id: string, tags: string[]) => patch<Missao>(`/missoes/${id}/tags`, { tags }),
+    atribuir: (id: string, responsavelIds: string[]) => patch<Missao>(`/missoes/${id}/atribuir`, { responsavelIds }),
+    iniciar: (id: string) => patch<Missao>(`/missoes/${id}/iniciar`, {}),
     remover: (id: string) => del<void>(`/missoes/${id}`),
   },
 
   colunas: {
     listarPorProjeto: (projetoId: string) => get<Coluna[]>(`/projetos/${projetoId}/colunas`),
-    criar: (projetoId: string, nome: string, limite_wip?: number) =>
-      post<Coluna>(`/projetos/${projetoId}/colunas`, { nome, limite_wip }),
+    criar: (projetoId: string, nome: string, limiteWip?: number) =>
+      post<Coluna>(`/projetos/${projetoId}/colunas`, { nome, limiteWip }),
+    atualizar: (id: string, dto: { nome?: string; limiteWip?: number | null }) =>
+      patch<Coluna>(`/colunas/${id}`, dto),
     remover: (id: string) => del<void>(`/colunas/${id}`),
   },
 
   missaoLabels: {
-    listarPorProjeto: (_projetoId: string) => Promise.resolve<MissaoLabel[]>([]), // sem endpoint de listagem dedicado ainda
+    listarPorProjeto: (projetoId: string) => get<MissaoLabel[]>(`/projetos/${projetoId}/labels`),
+    criar: (projetoId: string, nome: string, cor: string) =>
+      post<MissaoLabel>(`/projetos/${projetoId}/labels`, { nome, cor }),
+    atualizar: (id: string, dto: { nome?: string; cor?: string }) => patch<MissaoLabel>(`/labels/${id}`, dto),
+    remover: (id: string) => del<void>(`/labels/${id}`),
+  },
+
+  entregas: {
+    listarPorMissao: (missaoId: string) => get<Entrega[]>(`/missoes/${missaoId}/entregas`),
+    criar: (missaoId: string, conteudo?: string) => post<Entrega>(`/missoes/${missaoId}/entregas`, { conteudo }),
+    buscar: (id: string) => get<Entrega>(`/entregas/${id}`),
+  },
+
+  revisoes: {
+    listarPorEntrega: (entregaId: string) => get<Revisao[]>(`/entregas/${entregaId}/revisoes`),
+    criar: (entregaId: string, status: "APROVADO" | "REJEITADO", comentario?: string) =>
+      post<Revisao>(`/entregas/${entregaId}/revisoes`, { status, comentario }),
+  },
+
+  comentarios: {
+    listarPorMissao: (missaoId: string) => get<Comentario[]>(`/missoes/${missaoId}/comentarios`),
+    criar: (missaoId: string, texto: string) => post<Comentario>(`/missoes/${missaoId}/comentarios`, { texto }),
+    remover: (id: string) => del<void>(`/comentarios/${id}`),
+  },
+
+  checklist: {
+    listarPorMissao: (missaoId: string) => get<ChecklistItem[]>(`/missoes/${missaoId}/checklist`),
+    criar: (missaoId: string, texto: string) => post<ChecklistItem>(`/missoes/${missaoId}/checklist`, { texto }),
+    atualizar: (id: string, dto: { texto?: string; concluido?: boolean }) =>
+      patch<ChecklistItem>(`/checklist/${id}`, dto),
+    remover: (id: string) => del<void>(`/checklist/${id}`),
   },
 
   pastas: {
@@ -126,6 +173,14 @@ export const api = {
       get<Pasta[]>(`/projetos/${projetoId}/pastas${pastaPaiId ? `?pastaPaiId=${pastaPaiId}` : ""}`),
     criar: (projetoId: string, nome: string, pastaPaiId?: string) =>
       post<Pasta>(`/projetos/${projetoId}/pastas`, { nome, pastaPaiId }),
+    listarPorWorkspace: (workspaceId: string, pastaPaiId?: string) =>
+      get<Pasta[]>(`/workspaces/${workspaceId}/pastas${pastaPaiId ? `?pastaPaiId=${pastaPaiId}` : ""}`),
+    criarEmWorkspace: (workspaceId: string, nome: string, pastaPaiId?: string) =>
+      post<Pasta>(`/workspaces/${workspaceId}/pastas`, { nome, pastaPaiId }),
+    listarPorArea: (areaId: string, pastaPaiId?: string) =>
+      get<Pasta[]>(`/areas/${areaId}/pastas${pastaPaiId ? `?pastaPaiId=${pastaPaiId}` : ""}`),
+    criarEmArea: (areaId: string, nome: string, pastaPaiId?: string) =>
+      post<Pasta>(`/areas/${areaId}/pastas`, { nome, pastaPaiId }),
     remover: (id: string) => del<void>(`/pastas/${id}`),
   },
 
@@ -140,7 +195,30 @@ export const api = {
         body: form,
       });
     },
-    verificarIntegridade: (id: string) => get<{ integro: boolean }>(`/arquivos/${id}/verificar`),
+    listarPorWorkspace: (workspaceId: string, pastaId?: string) =>
+      get<Arquivo[]>(`/workspaces/${workspaceId}/arquivos${pastaId ? `?pastaId=${pastaId}` : "?pastaId=raiz"}`),
+    enviarEmWorkspace: (workspaceId: string, file: File, pastaId?: string) => {
+      const form = new FormData();
+      form.append("arquivo", file);
+      return request<Arquivo>(`/workspaces/${workspaceId}/arquivos?pastaId=${pastaId ?? "raiz"}`, {
+        method: "POST",
+        body: form,
+      });
+    },
+    listarPorArea: (areaId: string, pastaId?: string) =>
+      get<Arquivo[]>(`/areas/${areaId}/arquivos${pastaId ? `?pastaId=${pastaId}` : "?pastaId=raiz"}`),
+    enviarEmArea: (areaId: string, file: File, pastaId?: string) => {
+      const form = new FormData();
+      form.append("arquivo", file);
+      return request<Arquivo>(`/areas/${areaId}/arquivos?pastaId=${pastaId ?? "raiz"}`, {
+        method: "POST",
+        body: form,
+      });
+    },
+    verificarIntegridade: (id: string) => get<{ integro: boolean; hash_original: string; hash_atual: string }>(
+      `/arquivos/${id}/verificar`,
+    ),
+    renomear: (id: string, nome: string) => patch<Arquivo>(`/arquivos/${id}`, { nome }),
   },
 
   auditoria: {
@@ -153,6 +231,15 @@ export const api = {
     buscar: (id: string) => get<Documento>(`/documentos/${id}`),
     criar: (projetoId: string, nome: string, pastaId?: string) =>
       post<Documento>(`/projetos/${projetoId}/documentos`, { conteudo: `# ${nome}\n`, pastaId }),
+    listarPorWorkspace: (workspaceId: string, pastaId?: string) =>
+      get<Documento[]>(`/workspaces/${workspaceId}/documentos${pastaId ? `?pastaId=${pastaId}` : "?pastaId=raiz"}`),
+    criarEmWorkspace: (workspaceId: string, nome: string, pastaId?: string) =>
+      post<Documento>(`/workspaces/${workspaceId}/documentos`, { conteudo: `# ${nome}\n`, pastaId }),
+    listarPorArea: (areaId: string, pastaId?: string) =>
+      get<Documento[]>(`/areas/${areaId}/documentos${pastaId ? `?pastaId=${pastaId}` : "?pastaId=raiz"}`),
+    criarEmArea: (areaId: string, nome: string, pastaId?: string) =>
+      post<Documento>(`/areas/${areaId}/documentos`, { conteudo: `# ${nome}\n`, pastaId }),
     atualizar: (id: string, conteudo: string) => patch<Documento>(`/documentos/${id}`, { conteudo }),
+    remover: (id: string) => del<void>(`/documentos/${id}`),
   },
 };

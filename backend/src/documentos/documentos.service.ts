@@ -37,6 +37,36 @@ export class DocumentosService {
     });
   }
 
+  async criarEmWorkspace(workspaceId: string, dto: CreateDocumentoDto, autorId: string) {
+    const documento = await this.prisma.documento.create({
+      data: { workspace_id: workspaceId, pasta_id: dto.pastaId === 'raiz' ? null : dto.pastaId, autor_id: autorId, conteudo: dto.conteudo, tags: dto.tags ?? [] },
+    });
+    await this.auditoriaService.registrar(autorId, 'CRIAR', 'Documento', documento.id, null, documento);
+    return documento;
+  }
+
+  listarPorWorkspace(workspaceId: string, pastaId?: string) {
+    return this.prisma.documento.findMany({
+      where: { workspace_id: workspaceId, ...(pastaId !== undefined ? { pasta_id: pastaId === 'raiz' ? null : pastaId } : {}) },
+      orderBy: { atualizado_em: 'desc' },
+    });
+  }
+
+  async criarEmArea(areaId: string, dto: CreateDocumentoDto, autorId: string) {
+    const documento = await this.prisma.documento.create({
+      data: { area_id: areaId, pasta_id: dto.pastaId === 'raiz' ? null : dto.pastaId, autor_id: autorId, conteudo: dto.conteudo, tags: dto.tags ?? [] },
+    });
+    await this.auditoriaService.registrar(autorId, 'CRIAR', 'Documento', documento.id, null, documento);
+    return documento;
+  }
+
+  listarPorArea(areaId: string, pastaId?: string) {
+    return this.prisma.documento.findMany({
+      where: { area_id: areaId, ...(pastaId !== undefined ? { pasta_id: pastaId === 'raiz' ? null : pastaId } : {}) },
+      orderBy: { atualizado_em: 'desc' },
+    });
+  }
+
   async buscar(id: string) {
     const documento = await this.prisma.documento.findUnique({ where: { id } });
     if (!documento) {

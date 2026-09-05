@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, RefreshCw } from "lucide-react";
+import { Download, Plus, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +65,7 @@ export default function ProjectsPage() {
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Prazo</th>
               <th className="px-4 py-3 font-medium">Missões</th>
+              <th className="px-4 py-3 font-medium"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -78,11 +79,20 @@ export default function ProjectsPage() {
                 <td className="px-4 py-3 text-primary">{STATUS_LABEL[p.status]}</td>
                 <td className="px-4 py-3 text-muted-foreground">{p.prazo ? formatDate(p.prazo) : "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{missoesPorProjeto?.[p.id] ?? 0} mis.</td>
+                <td className="px-4 py-3 text-right">
+                  <a
+                    href={`/api/projetos/${p.id}/exportar`}
+                    title="Exportar projeto (ZIP com hashes de integridade)"
+                    className="inline-flex text-muted-foreground hover:text-primary"
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
+                </td>
               </tr>
             ))}
             {ativos.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum projeto ativo.
                 </td>
               </tr>

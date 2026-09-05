@@ -20,6 +20,18 @@ export function formatDate(iso: string): string {
   });
 }
 
+// O modelo Documento não tem campo de título (ver backend/prisma/schema.prisma
+// — só `conteudo`) — o nome exibido é derivado do primeiro heading/linha do
+// markdown, do jeito que o Flutter original também fazia.
+export function extractTitle(conteudo: string, fallback = "Sem título"): string {
+  const primeiraLinha = conteudo
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!primeiraLinha) return fallback;
+  return primeiraLinha.replace(/^#+\s*/, "").slice(0, 60) || fallback;
+}
+
 export function initials(nome: string): string {
   const parts = nome.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? "";

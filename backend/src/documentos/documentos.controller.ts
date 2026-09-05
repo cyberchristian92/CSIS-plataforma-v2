@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { DocumentosService } from './documentos.service';
@@ -20,6 +21,28 @@ export class DocumentosController {
   @Get('projetos/:projetoId/documentos')
   listarPorProjeto(@Param('projetoId') projetoId: string, @Query('missaoId') missaoId?: string, @Query('pastaId') pastaId?: string) {
     return this.documentosService.listarPorProjeto(projetoId, missaoId, pastaId);
+  }
+
+  @Post('workspaces/:workspaceId/documentos')
+  @Roles('ADMIN', 'LIDER')
+  criarEmWorkspace(@Param('workspaceId') workspaceId: string, @Body() dto: CreateDocumentoDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentosService.criarEmWorkspace(workspaceId, dto, user.id);
+  }
+
+  @Get('workspaces/:workspaceId/documentos')
+  listarPorWorkspace(@Param('workspaceId') workspaceId: string, @Query('pastaId') pastaId?: string) {
+    return this.documentosService.listarPorWorkspace(workspaceId, pastaId);
+  }
+
+  @Post('areas/:areaId/documentos')
+  @Roles('ADMIN', 'LIDER')
+  criarEmArea(@Param('areaId') areaId: string, @Body() dto: CreateDocumentoDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentosService.criarEmArea(areaId, dto, user.id);
+  }
+
+  @Get('areas/:areaId/documentos')
+  listarPorArea(@Param('areaId') areaId: string, @Query('pastaId') pastaId?: string) {
+    return this.documentosService.listarPorArea(areaId, pastaId);
   }
 
   @Get('documentos/:id')

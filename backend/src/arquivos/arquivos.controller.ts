@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ArquivosService } from './arquivos.service';
@@ -44,6 +45,42 @@ export class ArquivosController {
   @Get('projetos/:projetoId/arquivos')
   listarPorProjeto(@Param('projetoId') projetoId: string, @Query('missaoId') missaoId?: string, @Query('pastaId') pastaId?: string) {
     return this.arquivosService.listarPorProjeto(projetoId, missaoId, pastaId);
+  }
+
+  @Post('workspaces/:workspaceId/arquivos')
+  @Roles('ADMIN', 'LIDER')
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
+  enviarEmWorkspace(
+    @Param('workspaceId') workspaceId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('pastaId') pastaId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado (campo "arquivo").');
+    return this.arquivosService.enviarEmWorkspace(workspaceId, file, user.id, pastaId === 'raiz' ? undefined : pastaId);
+  }
+
+  @Get('workspaces/:workspaceId/arquivos')
+  listarPorWorkspace(@Param('workspaceId') workspaceId: string, @Query('pastaId') pastaId?: string) {
+    return this.arquivosService.listarPorWorkspace(workspaceId, pastaId);
+  }
+
+  @Post('areas/:areaId/arquivos')
+  @Roles('ADMIN', 'LIDER')
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage() }))
+  enviarEmArea(
+    @Param('areaId') areaId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('pastaId') pastaId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado (campo "arquivo").');
+    return this.arquivosService.enviarEmArea(areaId, file, user.id, pastaId === 'raiz' ? undefined : pastaId);
+  }
+
+  @Get('areas/:areaId/arquivos')
+  listarPorArea(@Param('areaId') areaId: string, @Query('pastaId') pastaId?: string) {
+    return this.arquivosService.listarPorArea(areaId, pastaId);
   }
 
   @Get('arquivos/:id')

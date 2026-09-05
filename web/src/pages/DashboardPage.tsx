@@ -14,10 +14,15 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const podeVerAuditoria = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
 
   const { data: projetos } = useQuery({ queryKey: ["projetos-todos"], queryFn: api.projetos.listarTodos });
   const { data: minhasMissoes } = useQuery({ queryKey: ["missoes-minhas"], queryFn: api.missoes.minhas });
-  const { data: auditoria } = useQuery({ queryKey: ["auditoria-recente"], queryFn: () => api.auditoria.listar(6) });
+  const { data: auditoria } = useQuery({
+    queryKey: ["auditoria-recente"],
+    queryFn: () => api.auditoria.listar(6),
+    enabled: podeVerAuditoria,
+  });
 
   const { data: todasMissoes } = useQuery({
     queryKey: ["missoes-todas", projetos?.map((p) => p.id)],
@@ -48,7 +53,7 @@ export default function DashboardPage() {
         <StatCard label="Minhas Missões" value={minhasMissoes?.length ?? 0} color="text-primary" />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className={`mt-6 grid grid-cols-1 gap-4 ${podeVerAuditoria ? "lg:grid-cols-[2fr_1fr]" : ""}`}>
         <Card>
           <CardContent className="p-4">
             <h2 className="mb-3 text-base font-semibold">Últimos Projetos</h2>
@@ -70,30 +75,32 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <h2 className="mb-3 text-base font-semibold">Auditoria (Recentes)</h2>
-            <div className="flex flex-col gap-3">
-              {auditoria?.items.map((log) => (
-                <div key={log.id} className="flex items-start gap-2 text-sm">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                  <div>
-                    <p>
-                      <span className="font-medium">{log.user?.nome ?? "Sistema"}</span> — {log.acao}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{formatDate(log.timestamp)}</p>
+        {podeVerAuditoria && (
+          <Card>
+            <CardContent className="p-4">
+              <h2 className="mb-3 text-base font-semibold">Auditoria (Recentes)</h2>
+              <div className="flex flex-col gap-3">
+                {auditoria?.items.map((log) => (
+                  <div key={log.id} className="flex items-start gap-2 text-sm">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                    <div>
+                      <p>
+                        <span className="font-medium">{log.user?.nome ?? "Sistema"}</span> — {log.acao}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{formatDate(log.timestamp)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {(!auditoria || auditoria.items.length === 0) && (
-                <p className="text-sm text-muted-foreground">Sem atividade registrada.</p>
-              )}
-            </div>
-            <Link to="/auditoria" className="mt-3 inline-block text-sm text-primary hover:underline">
-              Ver auditoria completa
-            </Link>
-          </CardContent>
-        </Card>
+                ))}
+                {(!auditoria || auditoria.items.length === 0) && (
+                  <p className="text-sm text-muted-foreground">Sem atividade registrada.</p>
+                )}
+              </div>
+              <Link to="/auditoria" className="mt-3 inline-block text-sm text-primary hover:underline">
+                Ver auditoria completa
+              </Link>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
@@ -23,6 +23,13 @@ export class LaudoService {
 
   async compilar(documentoId: string, userId: string) {
     const documento = await this.buscarDocumento(documentoId);
+    // Compilação de laudo resolve referências de arquivo relativas ao Projeto
+    // (ver LaudoCompilerService.materializarArquivosDoProjeto) — só faz
+    // sentido pra documento escopado a um Projeto, não pra um documento
+    // solto em Workspace/Área (pasta de Recursos, por exemplo).
+    if (!documento.projeto_id) {
+      throw new BadRequestException('Só é possível compilar laudo de um documento vinculado a um projeto.');
+    }
     const resultado = await this.compilerService.compilar(documentoId, documento.projeto_id, documento.conteudo);
 
     // Amarra o PDF gerado à cadeia de custódia: o hash do binário resultante

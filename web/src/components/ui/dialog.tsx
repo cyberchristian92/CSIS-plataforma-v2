@@ -7,10 +7,10 @@ export function Dialog({ open, onClose, children, className }: { open: boolean; 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className={cn("w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl", className)}
+        className={cn("relative w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl", className)}
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={onClose} className="absolute right-8 top-8 text-muted-foreground hover:text-foreground">
+        <button onClick={onClose} className="absolute right-4 top-4 text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
         </button>
         {children}

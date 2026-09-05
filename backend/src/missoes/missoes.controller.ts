@@ -31,6 +31,12 @@ export class MissoesController {
     return this.missoesService.listarPorResponsavel(user.id);
   }
 
+  @Get('missoes/em-revisao')
+  @Roles('ADMIN', 'LIDER', 'REVISOR')
+  listarEmRevisao() {
+    return this.missoesService.listarEmRevisao();
+  }
+
   @Get('missoes/:id')
   buscar(@Param('id') id: string) {
     return this.missoesService.buscar(id);

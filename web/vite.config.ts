@@ -10,7 +10,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // 5173 colide com o container Docker "sinarca_frontend" (outro projeto
+    // deste mesmo ambiente) — 5174 evita a ambiguidade de resolução de
+    // "localhost" entre IPv4/IPv6 quando as duas portas ficam ocupadas.
+    port: 5174,
+    strictPort: true,
     proxy: {
       "/api": {
         target: "http://localhost:3000",

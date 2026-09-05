@@ -1,50 +1,24 @@
-// Conversor markdown -> HTML minimalista (não é CommonMark completo, cobre
-// o suficiente pra documentação de missão/projeto: headings, ênfase, listas,
-// parágrafos). Evita puxar uma dependência pesada pra um editor simples.
-export function markdownToHtml(src: string): string {
-  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
-  const lines = escape(src).split("\n");
-  const out: string[] = [];
-  let inList = false;
+// CommonMark completo via `marked` (o parser anterior era hand-rolled e não
+// cobria tabelas, blocos de código, links, listas numeradas, blockquote —
+// por isso "não funcionava 100%"). `DOMPurify` sanitiza antes de injetar via
+// dangerouslySetInnerHTML, porque o conteúdo é fornecido pelo usuário.
+marked.setOptions({ breaks: true, gfm: true });
 
-  for (const line of lines) {
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    const listItem = /^[-*]\s+(.*)$/.exec(line);
-
-    if (heading) {
-      if (inList) {
-        out.push("</ul>");
-        inList = false;
-      }
-      const level = heading[1].length;
-      out.push(`<h${level}>${inline(heading[2])}</h${level}>`);
-    } else if (listItem) {
-      if (!inList) {
-        out.push("<ul>");
-        inList = true;
-      }
-      out.push(`<li>${inline(listItem[1])}</li>`);
-    } else if (line.trim() === "") {
-      if (inList) {
-        out.push("</ul>");
-        inList = false;
-      }
-    } else {
-      if (inList) {
-        out.push("</ul>");
-        inList = false;
-      }
-      out.push(`<p>${inline(line)}</p>`);
-    }
-  }
-  if (inList) out.push("</ul>");
-  return out.join("\n");
+// `[[Nome do Documento]]` vira um link interno de busca por título — os
+// documentos não têm slug estável, então o alvo é resolvido em runtime pela
+// página que consome o link (ver DocumentEditorPage), não aqui.
+function resolveWikilinks(src: string): string {
+  return src.replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, (_match, alvo, _pipe, label) => {
+    const texto = (label ?? alvo).trim();
+    return `[${texto}](wikilink://${encodeURIComponent(alvo.trim())})`;
+  });
 }
 
-function inline(s: string): string {
-  return s
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>");
+export function markdownToHtml(src: string): string {
+  const comLinks = resolveWikilinks(src);
+  const html = marked.parse(comLinks, { async: false }) as string;
+  return DOMPurify.sanitize(html);
 }

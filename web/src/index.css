@@ -1,41 +1,104 @@
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
-  Tema escuro navy + ciano — réplica deliberada da identidade visual do
-  protótipo Flutter original (ver figuras/prototipo/*.png no TCC e
-  Produçao/design/design brand csis/). Não é uma escolha nova: é a marca
-  já existente da CSIS, só reimplementada em CSS.
+  Tema escuro navy + ciano — réplica fiel da identidade visual do protótipo
+  Flutter original (ver figuras/prototipo/*.png no TCC e
+  Produçao/design/design brand csis/). Valores hex extraídos diretamente do
+  tema Flutter (lib/theme/app_theme.dart), convertidos para HSL só para
+  encaixar no formato hsl(var(--x)) que o Tailwind espera. É a marca já
+  existente da CSIS, reimplementada em CSS — o claro é uma alternativa nova,
+  mantida disponível mas não é a identidade visual "oficial".
 */
 @layer base {
   :root {
-    --background: 220 45% 6%;
+    --background: 210 40% 98%;
+    --foreground: 214 70% 6%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 214 70% 6%;
+
+    --surface: 0 0% 100%;
+    --surface-raised: 210 40% 96%;
+
+    --primary: 186 60% 45%;
+    --primary-hover: 186 60% 38%;
+    --primary-dim: 186 53% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 30% 93%;
+    --secondary-foreground: 214 70% 6%;
+
+    --muted: 210 30% 93%;
+    --muted-foreground: 218 11% 40%;
+
+    --accent: 210 30% 93%;
+    --accent-foreground: 186 60% 38%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 186 60% 45%;
+
+    --text-disabled: 220 9% 60%;
+
+    --status-pending: 215 16% 47%;
+    --status-in-progress: 186 60% 45%;
+    --status-in-review: 38 92% 50%;
+    --status-approved: 142 76% 36%;
+    --status-rejected: 0 72% 51%;
+    --status-archived: 215 20% 55%;
+
+    --radius: 10px;
+  }
+
+  /* Tema escuro — visual "oficial" da CSIS, réplica do Flutter. É o padrão da aplicação. */
+  :root.dark {
+    --background: 214 70% 6%;
     --foreground: 210 40% 96%;
 
-    --card: 220 40% 10%;
+    --card: 212 67% 11%;
     --card-foreground: 210 40% 96%;
 
-    --primary: 189 85% 53%;
-    --primary-foreground: 220 45% 6%;
+    --surface: 212 67% 11%;
+    --surface-raised: 213 60% 17%;
 
-    --secondary: 220 35% 15%;
+    --primary: 186 60% 55%;
+    --primary-hover: 186 80% 67%;
+    --primary-dim: 186 53% 35%;
+    --primary-foreground: 214 70% 6%;
+
+    --secondary: 213 60% 17%;
     --secondary-foreground: 210 40% 96%;
 
-    --muted: 220 35% 14%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 213 55% 15%;
+    --muted-foreground: 218 11% 65%;
 
-    --accent: 220 35% 16%;
-    --accent-foreground: 189 85% 60%;
+    --accent: 213 55% 16%;
+    --accent-foreground: 186 60% 60%;
 
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 30% 18%;
-    --input: 220 35% 14%;
-    --ring: 189 85% 53%;
+    --border: 0 0% 100% / 0.12;
+    --input: 213 55% 15%;
+    --ring: 186 60% 55%;
 
-    --radius: 0.5rem;
+    --text-disabled: 220 9% 46%;
+
+    --status-pending: 215 16% 47%;
+    --status-in-progress: 186 60% 55%;
+    --status-in-review: 38 92% 50%;
+    --status-approved: 142 76% 36%;
+    --status-rejected: 0 72% 51%;
+    --status-archived: 215 20% 65%;
+
+    --radius: 10px;
   }
 
   * {
@@ -44,5 +107,24 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .font-mono, code, kbd, samp, pre {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+}
+
+@layer utilities {
+  .badge-mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
   }
 }

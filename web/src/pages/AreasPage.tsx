@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -37,14 +38,16 @@ export default function AreasPage() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {areas?.map((a) => (
-          <Card key={a.id}>
-            <CardContent className="p-4">
-              <p className="font-medium">{a.nome}</p>
-              <Badge variant="outline" className="mt-2">
-                {a.tipo}
-              </Badge>
-            </CardContent>
-          </Card>
+          <Link key={a.id} to={`/areas/${a.id}`}>
+            <Card className="h-full hover:border-primary/40">
+              <CardContent className="p-4">
+                <p className="font-medium">{a.nome}</p>
+                <Badge variant="outline" className="mt-2">
+                  {a.tipo}
+                </Badge>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
         {areas?.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma área cadastrada.</p>}
       </div>

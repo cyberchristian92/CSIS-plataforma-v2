@@ -31,6 +31,39 @@ export class PastasService {
     });
   }
 
+  // Pastas genéricas direto no Workspace ("Recursos": logos, templates,
+  // prompts) ou na Área (ativos daquela área, à parte dos Projetos que ela
+  // contém) — mesmo modelo Pasta, escopo diferente. Ver nota no schema.prisma.
+  async criarEmWorkspace(workspaceId: string, dto: CreatePastaDto, userId: string) {
+    const pasta = await this.prisma.pasta.create({
+      data: { workspace_id: workspaceId, pasta_pai_id: dto.pastaPaiId, nome: dto.nome },
+    });
+    await this.auditoriaService.registrar(userId, 'CRIAR', 'Pasta', pasta.id, null, pasta);
+    return pasta;
+  }
+
+  listarPorWorkspace(workspaceId: string, pastaPaiId?: string) {
+    return this.prisma.pasta.findMany({
+      where: { workspace_id: workspaceId, pasta_pai_id: pastaPaiId ?? null },
+      orderBy: { nome: 'asc' },
+    });
+  }
+
+  async criarEmArea(areaId: string, dto: CreatePastaDto, userId: string) {
+    const pasta = await this.prisma.pasta.create({
+      data: { area_id: areaId, pasta_pai_id: dto.pastaPaiId, nome: dto.nome },
+    });
+    await this.auditoriaService.registrar(userId, 'CRIAR', 'Pasta', pasta.id, null, pasta);
+    return pasta;
+  }
+
+  listarPorArea(areaId: string, pastaPaiId?: string) {
+    return this.prisma.pasta.findMany({
+      where: { area_id: areaId, pasta_pai_id: pastaPaiId ?? null },
+      orderBy: { nome: 'asc' },
+    });
+  }
+
   async buscar(id: string) {
     const pasta = await this.prisma.pasta.findUnique({ where: { id } });
     if (!pasta) {
@@ -49,9 +82,19 @@ export class PastasService {
     return atualizado;
   }
 
+  // Exclusão não-destrutiva: sub-pastas, arquivos e documentos que estavam
+  // dentro dela sobem um nível (para a pasta_pai_id desta pasta, ou para a
+  // raiz do escopo — projeto/área/workspace — se esta já era raiz). Nada é
+  // apagado além da própria pasta. Replica o comportamento do FileBrowser
+  // original (ver auditoria do Flutter).
   async remover(id: string, userId: string) {
     const anterior = await this.buscar(id);
-    await this.prisma.pasta.delete({ where: { id } });
+    await this.prisma.$transaction([
+      this.prisma.pasta.updateMany({ where: { pasta_pai_id: id }, data: { pasta_pai_id: anterior.pasta_pai_id } }),
+      this.prisma.arquivo.updateMany({ where: { pasta_id: id }, data: { pasta_id: anterior.pasta_pai_id } }),
+      this.prisma.documento.updateMany({ where: { pasta_id: id }, data: { pasta_id: anterior.pasta_pai_id } }),
+      this.prisma.pasta.delete({ where: { id } }),
+    ]);
     await this.auditoriaService.registrar(userId, 'REMOVER', 'Pasta', id, anterior, null);
     return { ok: true };
   }
