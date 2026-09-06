@@ -4,7 +4,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Bold,
+  Check,
   Code,
+  FileOutput,
   Heading2,
   Italic,
   Link2,
@@ -12,8 +14,9 @@ import {
   ListChecks,
   Save,
   Table,
+  X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { extractTitle } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +36,7 @@ export default function DocumentEditorPage() {
   });
   const [conteudo, setConteudo] = useState("");
   const [salvoEm, setSalvoEm] = useState<Date | null>(null);
+  const [resultadoLaudo, setResultadoLaudo] = useState<{ sucesso: boolean; log: string } | null>(null);
 
   useEffect(() => {
     if (documento) setConteudo(documento.conteudo);
@@ -41,6 +45,22 @@ export default function DocumentEditorPage() {
   const salvar = useMutation({
     mutationFn: () => api.documentos.atualizar(documentoId, conteudo),
     onSuccess: () => setSalvoEm(new Date()),
+  });
+
+  // Compila o Markdown atual em PDF (Pandoc + LaTeX/Eisvogel, ver
+  // backend/src/laudo) — só existe pra documentos vinculados a um Projeto;
+  // salva antes de compilar pra nunca gerar PDF de um conteúdo que ainda não
+  // foi persistido.
+  const compilarLaudo = useMutation({
+    mutationFn: async () => {
+      await api.documentos.atualizar(documentoId, conteudo);
+      return api.laudo.compilar(documentoId);
+    },
+    onSuccess: (resultado) => {
+      setSalvoEm(new Date());
+      setResultadoLaudo(resultado);
+    },
+    onError: (e: unknown) => setResultadoLaudo({ sucesso: false, log: e instanceof ApiError ? e.message : "Falha ao compilar." }),
   });
 
   function inserirNoCursor(antes: string, depois = "", placeholder = "") {
@@ -86,11 +106,52 @@ export default function DocumentEditorPage() {
               Salvo às {salvoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
+          {documento?.projeto_id && (
+            <Button variant="outline" onClick={() => compilarLaudo.mutate()} disabled={compilarLaudo.isPending}>
+              <FileOutput className="h-4 w-4" /> {compilarLaudo.isPending ? "Compilando…" : "Compilar Laudo"}
+            </Button>
+          )}
           <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
             <Save className="h-4 w-4" /> {salvar.isPending ? "Salvando…" : "Salvar"}
           </Button>
         </div>
       </header>
+
+      {resultadoLaudo && (
+        <div
+          className={`flex items-start gap-2 border-b border-border px-4 py-2 text-sm ${
+            resultadoLaudo.sucesso ? "bg-status-approved/10" : "bg-destructive/10"
+          }`}
+        >
+          {resultadoLaudo.sucesso ? (
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-status-approved" />
+          ) : (
+            <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          )}
+          <div className="min-w-0 flex-1">
+            {resultadoLaudo.sucesso ? (
+              <a
+                href={api.laudo.pdfUrl(documentoId)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                Laudo compilado com sucesso — abrir PDF
+              </a>
+            ) : (
+              <>
+                <p className="font-medium text-destructive">Falha ao compilar o laudo.</p>
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+                  {resultadoLaudo.log}
+                </pre>
+              </>
+            )}
+          </div>
+          <button onClick={() => setResultadoLaudo(null)} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-1.5">
         <ToolbarButton title="Negrito" onClick={() => inserirNoCursor("**", "**", "negrito")}>

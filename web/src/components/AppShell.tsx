@@ -1,10 +1,12 @@
-import { Outlet } from "react-router-dom";
-import { Bell, Moon, Search, Sun } from "lucide-react";
+import { Link, Outlet } from "react-router-dom";
+import { Bell, Moon, Search, Settings, Sun } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { useTheme } from "@/lib/theme-context";
+import { useAuth } from "@/lib/auth-context";
 
 export function AppShell() {
   const { theme, toggle } = useTheme();
+  const { user } = useAuth();
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
@@ -28,6 +30,15 @@ export function AppShell() {
           <button className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
             <Bell className="h-5 w-5" />
           </button>
+          {user?.papel_global === "ADMIN" && (
+            <Link
+              to="/configuracoes"
+              title="Configurações"
+              className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Settings className="h-5 w-5" />
+            </Link>
+          )}
         </header>
         <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />

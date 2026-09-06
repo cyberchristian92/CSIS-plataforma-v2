@@ -7,8 +7,17 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const execFileAsync = promisify(execFile);
 
-const LAUDO_WORKDIR = process.env.LAUDO_WORKDIR ?? join(process.cwd(), 'laudo-workdir');
-const PANDOC_CONTAINER = process.env.PANDOC_ENGINE_CONTAINER ?? 'csis_pandoc_engine';
+// Lidas em runtime (dentro das funções que usam), não como constante de
+// módulo — nesse ponto do carregamento (import estático de app.module.ts
+// ainda em andamento) o ConfigModule.forRoot() ainda não rodou, então
+// `process.env` não tem as variáveis do `.env` ainda; uma constante de
+// módulo aqui sempre pegaria só o valor default.
+function laudoWorkdir(): string {
+  return process.env.LAUDO_WORKDIR ?? join(process.cwd(), 'laudo-workdir');
+}
+function pandocContainer(): string {
+  return process.env.PANDOC_ENGINE_CONTAINER ?? 'csis_pandoc_engine';
+}
 
 export interface ResultadoCompilacaoLaudo {
   sucesso: boolean;
@@ -47,7 +56,7 @@ export class LaudoCompilerService {
   }
 
   async compilar(documentoId: string, projetoId: string, conteudoMarkdown: string): Promise<ResultadoCompilacaoLaudo> {
-    const dir = join(LAUDO_WORKDIR, documentoId);
+    const dir = join(laudoWorkdir(), documentoId);
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
 
@@ -62,7 +71,7 @@ export class LaudoCompilerService {
           'exec',
           '-w',
           `/work/${documentoId}`,
-          PANDOC_CONTAINER,
+          pandocContainer(),
           'pandoc',
           'laudo.md',
           '-o',
@@ -98,6 +107,6 @@ export class LaudoCompilerService {
   }
 
   caminhoPdf(documentoId: string): string {
-    return join(LAUDO_WORKDIR, documentoId, 'laudo.pdf');
+    return join(laudoWorkdir(), documentoId, 'laudo.pdf');
   }
 }

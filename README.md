@@ -41,6 +41,13 @@ Para acompanhar os logs do backend: `docker compose logs -f backend`. Para desli
 `docker compose down` (os dados do banco continuam guardados no volume `pgdata` — some só com
 `docker compose down -v`).
 
+> **Limitação conhecida**: a compilação do Laudo em PDF roda um `docker exec` no container
+> `pandoc` a partir do próprio backend — isso só funciona quando o **backend roda fora do
+> Docker** (seção seguinte), porque o container do backend não tem acesso ao Docker do host
+> (precisaria montar `/var/run/docker.sock` e instalar o CLI do Docker na imagem, o que ainda não
+> foi feito). Rodando com `docker compose up`, todo o resto funciona normalmente — só o botão
+> "Compilar Laudo" vai falhar.
+
 ## Rodando sem Docker (desenvolvimento)
 
 Útil se você quer editar o backend com hot-reload em vez de reconstruir a imagem a cada mudança.

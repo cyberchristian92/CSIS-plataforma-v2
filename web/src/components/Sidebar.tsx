@@ -56,7 +56,6 @@ const GROUPS: NavGroup[] = [
       { to: "/recursos", label: "Arquivos da Empresa" },
       { to: "/usuarios", label: "Gestão de Usuários" },
       { to: "/auditoria", label: "Auditoria Global" },
-      { to: "/configuracoes", label: "Configurações", roles: ["ADMIN"] },
     ],
   },
   {

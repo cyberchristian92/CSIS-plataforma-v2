@@ -279,4 +279,11 @@ export const api = {
     atualizar: (id: string, conteudo: string) => patch<Documento>(`/documentos/${id}`, { conteudo }),
     remover: (id: string) => del<void>(`/documentos/${id}`),
   },
+
+  laudo: {
+    compilar: (documentoId: string) => post<{ sucesso: boolean; log: string }>(`/documentos/${documentoId}/laudo/compilar`),
+    // O PDF é servido como binário (sendFile), não JSON — a URL em si é o
+    // que interessa (usada num <a>/<iframe>), não uma chamada via fetch.
+    pdfUrl: (documentoId: string) => `${BASE}/documentos/${documentoId}/laudo/pdf`,
+  },
 };

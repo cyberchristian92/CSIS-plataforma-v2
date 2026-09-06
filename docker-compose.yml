@@ -34,6 +34,11 @@ services:
       SEED_ADMIN_NOME: ${SEED_ADMIN_NOME:-Administrador}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@csis.local}
       SEED_ADMIN_SENHA: ${SEED_ADMIN_SENHA:-TrocarSenha123}
+      # Nome do container do motor de laudo definido abaixo — precisa bater
+      # com `container_name: csis_v2_pandoc_engine` pra não colidir com o
+      # `csis_pandoc_engine` do repositório original quando os dois rodam ao
+      # mesmo tempo na mesma máquina.
+      PANDOC_ENGINE_CONTAINER: csis_v2_pandoc_engine
     volumes:
       - uploads:/app/uploads
     restart: unless-stopped
