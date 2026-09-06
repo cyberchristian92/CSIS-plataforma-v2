@@ -4,14 +4,17 @@ import type {
   ChecklistItem,
   Coluna,
   Comentario,
+  Compartilhamento,
   Documento,
   Entrega,
+  Lista,
   LogAuditoria,
   Missao,
   MissaoLabel,
   Pasta,
   Projeto,
   Revisao,
+  TipoRecursoRestringivel,
   User,
   Workspace,
 } from "./types";
@@ -52,6 +55,8 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
 const patch = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined });
+const put = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export const api = {
@@ -227,6 +232,21 @@ export const api = {
       `/arquivos/${id}/verificar`,
     ),
     renomear: (id: string, nome: string) => patch<Arquivo>(`/arquivos/${id}`, { nome }),
+  },
+
+  listas: {
+    listarPorWorkspace: (workspaceId: string) => get<Lista[]>(`/workspaces/${workspaceId}/listas`),
+    criar: (workspaceId: string, nome: string) => post<Lista>(`/workspaces/${workspaceId}/listas`, { nome }),
+    renomear: (id: string, nome: string) => patch<Lista>(`/listas/${id}`, { nome }),
+    remover: (id: string) => del<void>(`/listas/${id}`),
+    adicionarMembro: (listaId: string, userId: string) => post<{ ok: boolean }>(`/listas/${listaId}/membros`, { userId }),
+    removerMembro: (listaId: string, userId: string) => del<{ ok: boolean }>(`/listas/${listaId}/membros/${userId}`),
+  },
+
+  compartilhamento: {
+    obter: (tipo: TipoRecursoRestringivel, id: string) => get<Compartilhamento>(`/compartilhamento/${tipo}/${id}`),
+    definir: (tipo: TipoRecursoRestringivel, id: string, dto: { restrito: boolean; listaIds: string[]; userIds: string[] }) =>
+      put<Compartilhamento>(`/compartilhamento/${tipo}/${id}`, dto),
   },
 
   integridade: {

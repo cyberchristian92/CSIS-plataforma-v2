@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AcessoService } from '../acesso/acesso.service';
 import { EVT_CONTEUDO_REMOVIDO, EVT_HIERARQUIA_ALTERADA } from '../integridade/integridade.events';
 import { CreateProjetoDto } from './dto/create-projeto.dto';
 import { UpdateProjetoDto } from './dto/update-projeto.dto';
+
+type Papel = 'ADMIN' | 'LIDER' | 'REVISOR' | 'COLABORADOR';
 
 @Injectable()
 export class ProjetosService {
@@ -12,6 +15,7 @@ export class ProjetosService {
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
     private readonly eventos: EventEmitter2,
+    private readonly acessoService: AcessoService,
   ) {}
 
   async criar(areaId: string, dto: CreateProjetoDto, userId: string) {
@@ -21,6 +25,7 @@ export class ProjetosService {
         nome: dto.nome,
         descricao: dto.descricao,
         prazo: dto.prazo ? new Date(dto.prazo) : undefined,
+        criado_por_id: userId,
         // Board Kanban nasce com as mesmas 5 colunas que existiam como status
         // antes — livres pra renomear/reordenar/excluir depois.
         colunas: {
@@ -39,11 +44,13 @@ export class ProjetosService {
     return projeto;
   }
 
-  listarPorArea(areaId: string) {
-    return this.prisma.projeto.findMany({ where: { area_id: areaId }, orderBy: { nome: 'asc' } });
+  async listarPorArea(areaId: string, userId: string, papel: Papel) {
+    const projetos = await this.prisma.projeto.findMany({ where: { area_id: areaId }, orderBy: { nome: 'asc' } });
+    const visiveis = await this.acessoService.idsVisiveis('projeto', projetos, userId, papel);
+    return projetos.filter((p) => visiveis.has(p.id));
   }
 
-  async buscar(id: string) {
+  async buscar(id: string, userId?: string, papel?: Papel) {
     const projeto = await this.prisma.projeto.findUnique({
       where: { id },
       include: {
@@ -63,6 +70,14 @@ export class ProjetosService {
     });
     if (!projeto) {
       throw new NotFoundException('Projeto não encontrado.');
+    }
+    // userId/papel ficam opcionais porque outros services (ex: MissoesService)
+    // reaproveitam este método internamente sem contexto de requisição HTTP.
+    if (userId && papel) {
+      const podeVer = await this.acessoService.podeVer('projeto', projeto, userId, papel);
+      if (!podeVer) {
+        throw new ForbiddenException('Você não tem acesso a este projeto.');
+      }
     }
     return projeto;
   }

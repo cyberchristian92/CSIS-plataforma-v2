@@ -26,6 +26,8 @@ export interface Area {
   nome: string;
   tipo: string;
   ipfs_cid: string | null;
+  restrito: boolean;
+  criado_por_id: string | null;
 }
 
 export type ProjetoStatus = "ATIVO" | "ARQUIVADO" | "CONCLUIDO";
@@ -38,6 +40,8 @@ export interface Projeto {
   status: ProjetoStatus;
   prazo: string | null;
   ipfs_cid: string | null;
+  restrito: boolean;
+  criado_por_id: string | null;
 }
 
 export type MissaoStatus = "PENDENTE" | "EM_ANDAMENTO" | "EM_REVISAO" | "APROVADA" | "REJEITADA";
@@ -174,4 +178,24 @@ export interface ChecklistItem {
   texto: string;
   concluido: boolean;
   ordem: number;
+}
+
+// Listas de Acesso — grupos de nome livre usados só pra RESTRINGIR a
+// visibilidade de um Projeto/Área/Pasta específico (estilo "compartilhar"
+// do Drive). Por padrão nada é restrito; ver SettingsPage e o botão
+// "Compartilhar" nas páginas de Projeto/Área.
+export interface Lista {
+  id: string;
+  workspace_id: string;
+  nome: string;
+  criado_em: string;
+  membros?: { user: User }[];
+}
+
+export type TipoRecursoRestringivel = "projeto" | "area" | "pasta";
+
+export interface Compartilhamento {
+  restrito: boolean;
+  listas: { id: string; nome: string }[];
+  usuarios: { id: string; nome: string; email: string }[];
 }

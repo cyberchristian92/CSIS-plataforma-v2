@@ -1,70 +1,110 @@
 # CSIS Platform v2
 
-Evolução pós-defesa da Plataforma CSIS. Este repositório é **paralelo e independente** do
-[`csis-platform`](../csis-platform) original — aquele é o artefato acadêmico defendido no TCC
-(Flutter Web + NestJS + Prisma + PostgreSQL) e **não é tocado** a partir daqui. Este projeto
-nasce sem prazo de defesa em cima, para evoluir o produto com calma.
+Plataforma de gestão de casos periciais com trilha de integridade verificável — cadastro de
+Projetos/Missões, fluxo de Entrega → Revisão com Segregação de Funções, explorador de
+arquivos/documentos com hash de integridade (Merkle Tree) e laudo em PDF gerado a partir de
+Markdown.
 
-## Por que um repositório novo
+Evolução pós-defesa da Plataforma CSIS original (TCC, Flutter Web). Este repositório é
+**paralelo e independente** do `csis-platform` original — aquele é o artefato acadêmico
+defendido e não é tocado a partir daqui.
 
-O `csis-platform` original tem duas limitações que motivaram esta v2:
+## Colocar no ar em 5 minutos (Docker)
 
-1. **Frontend Flutter Web** é fraco para o tipo de conteúdo que a plataforma mais precisa
-   (editor de markdown, dashboards densos, tabelas de auditoria) — bom ecossistema web já
-   existe em React para isso.
-2. **Mobile precisa ser um app de captura rápida** (texto, áudio, foto) em campo, alimentando
-   dados para o web — não precisa do Flutter Web, só do Flutter mobile (já existe, será
-   reaproveitado e enxugado).
+Pré-requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e
+rodando, [Node.js 20+](https://nodejs.org/) (só para o frontend — o backend roda inteiro dentro
+do container).
 
-## Decisões de arquitetura já tomadas nesta conversa
+```bash
+git clone https://github.com/cyberchristian92/CSIS-TCC-v2.git
+cd CSIS-TCC-v2
 
-- **Backend**: NestJS + Prisma + PostgreSQL — mesma base do original, mas com extensão do
-  modelo de dados para suportar a árvore de hash (ver seção abaixo — **em aberto**).
-- **Web**: React + Vite + TypeScript + TanStack Query + shadcn/ui (Tailwind).
-- **Mobile**: o app Flutter existente, copiado para este repositório, com o alvo `web`
-  removido e as telas reduzidas ao essencial de campo (login, minhas missões, captura rápida
-  de texto/áudio/foto anexando na Missão ativa).
-- **Hierarquia**: inspirada no método PARA (Workspace → Área → Projeto → Missão), organizada
-  como estrutura de pastas e arquivos — cada nível é uma "pasta", contém sub-pastas/arquivos.
-- **Kanban**: quadro de Missões tão livre quanto o Trello — colunas e *cards* reorganizáveis
-  sem restrição. **Desacoplado do estado oficial**: mover um card não muda status. As
-  transições que importam (enviar para revisão, aprovar, reprovar) são ações explícitas na
-  interface, sempre validadas no servidor, independentes da posição visual do card.
-- **Integridade**: hash em todo arquivo *e* em toda pasta/contêiner da hierarquia (árvore de
-  Merkle — mesmo princípio do Git/IPFS). O hash de uma pasta deriva do hash do que está dentro
-  dela; qualquer alteração em qualquer nível se propaga pra cima. Isso faz da estrutura inteira
-  algo autoverificável.
-- **Backup/portabilidade**: fazer backup é literalmente exportar a árvore inteira (pastas reais
-  + arquivos + manifesto de hashes), independente do tamanho.
-- **Código aberto / auto-hospedável**: qualquer empresa pode subir sua própria instância e
-  seus próprios dados. O *moat* de negócio deixa de ser "o software é proprietário" e passa a
-  ser a rede de talento curada, a marca e o histórico de casos (ver discussão de
-  *bridge decay* no plano de negócios) — decisão consciente, não um descuido.
+# 1. Banco + backend (aplica as migrations e cria o usuário admin sozinho)
+cp .env.example .env
+docker compose up -d --build
 
-## Em aberto — decisões técnicas do modelo de hash (ver conversa)
+# 2. Frontend (janela/aba de terminal separada)
+cd web
+npm install
+npm run dev
+```
 
-1. **Granularidade**: todo tipo de entidade recebe hash (Workspace, Área, Projeto, Missão,
-   Documento, Arquivo, Comentário, Revisão), ou só os níveis de "contêiner" (pastas) e as
-   "folhas" de conteúdo (arquivos/documentos)?
-2. **Hash versionado ou recalculado ao vivo?** Se uma Missão muda de estado, isso precisa gerar
-   um *novo* hash encadeado ao anterior (histórico completo, tipo commits do Git), ou o hash é
-   sempre recalculado sobre o estado atual (perde a capacidade de provar "nada mudou entre X e
-   Y")? A proposta default: **versionado/encadeado**, porque é isso que sustenta o argumento de
-   auditoria imutável já escrito no TCC.
-3. **Onde a árvore de hash vive**: substitui o modelo relacional (Postgres/Prisma) por um
-   armazenamento endereçado por conteúdo (mais parecido com Git/IPFS, mais complexo, mais difícil
-   de consultar), ou o Postgres/Prisma continua sendo a fonte da verdade e a árvore de hash é
-   uma camada computada em cima (hash armazenado como coluna/tabela, recalculado quando o
-   conteúdo muda)? A proposta default: **manter o relacional como fonte da verdade**, com a
-   árvore de hash como camada derivada — mais simples, mais fácil de consultar, entrega os
-   mesmos benefícios de integridade/backup sem reescrever o banco do zero.
+Abra **http://localhost:5174** e entre com:
 
-## Estrutura planejada
+- **E-mail**: `admin@csis.local`
+- **Senha**: `TrocarSenha123`
+
+(Troque a senha assim que entrar — são as credenciais padrão de qualquer instância nova, definidas
+em `.env`.)
+
+Para acompanhar os logs do backend: `docker compose logs -f backend`. Para desligar tudo:
+`docker compose down` (os dados do banco continuam guardados no volume `pgdata` — some só com
+`docker compose down -v`).
+
+## Rodando sem Docker (desenvolvimento)
+
+Útil se você quer editar o backend com hot-reload em vez de reconstruir a imagem a cada mudança.
+
+```bash
+# Banco de dados (ainda via Docker, só o Postgres)
+docker compose up -d db
+
+# Backend
+cd backend
+npm install
+cp .env.example .env   # copie backend/.env.example — ajuste DATABASE_URL se mudou DB_PORT
+npx prisma migrate deploy
+npx prisma db seed
+npm run start:dev      # http://localhost:3000
+
+# Frontend (outro terminal)
+cd web
+npm install
+npm run dev             # http://localhost:5174
+```
+
+## Papéis de usuário
+
+O sistema implementa os cinco papéis descritos no TCC (seção "Papéis e responsabilidades"), com
+os seguintes nomes técnicos no código:
+
+| Papel no TCC     | Nome no sistema (`papel_global`) | Responsabilidade                                                             |
+| ---------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| Administrador     | `ADMIN`                          | Gerencia usuários, ajusta permissões, acompanha auditoria, configura a marca (nome/logo). |
+| Coordenador       | `LIDER`                          | Planeja o caso, cria/atribui Missões, gerencia Projetos e Áreas.              |
+| Especialista       | `COLABORADOR`                    | Executa as Missões atribuídas a ele e produz as entregas.                    |
+| Revisor            | `REVISOR`                        | Avalia as entregas (aprova/rejeita) — nunca a própria (Segregação de Funções). |
+| Cliente            | — *(ainda não implementado)*     | Solicita o serviço e recebe o resultado final.                               |
+
+> O papel **Cliente** está descrito no TCC mas ainda não tem uma tela/permissão própria no
+> sistema — hoje ele existe só como conceito de processo (quem contrata a perícia), sem login na
+> plataforma. Ver `docs/adr/` para decisões futuras sobre isso.
+
+## Estrutura do repositório
 
 ```
 csis-platform-v2/
-├── backend/     # NestJS + Prisma (evolução do schema original)
-├── web/         # React + Vite (novo)
-├── mobile/      # Flutter (copiado e enxugado do original)
-└── docs/        # decisões de arquitetura, ADRs
+├── backend/     # NestJS + Prisma + PostgreSQL
+├── web/         # React + Vite + TypeScript + TanStack Query
+├── docs/adr/    # decisões de arquitetura (por que cada coisa foi feita do jeito que foi)
+└── docker-compose.yml
 ```
+
+## Decisões de arquitetura
+
+- **Hierarquia**: inspirada no método PARA (Workspace → Área → Projeto → Missão) — Pastas,
+  Arquivos e Documentos podem viver em qualquer um desses níveis, não só dentro de Projetos
+  (permite gerenciar "Recursos" da empresa inteira e ativos de uma Área com a mesma interface).
+- **Kanban**: quadro de Missões livre estilo Trello, desacoplado do status oficial da Missão —
+  mover um card não aprova nem reprova nada; essas transições são ações explícitas, validadas no
+  servidor.
+- **Integridade**: cada Arquivo, Documento, Pasta, Missão, Projeto, Área e Workspace tem um hash
+  (CID, formato IPFS) que se propaga em cascata — mudar qualquer conteúdo recalcula o hash de
+  tudo acima dele, automaticamente. Ver `docs/adr/0002-motor-de-integridade-sem-daemon-ipfs.md`.
+- **Sem blockchain**: a plataforma é auto-hospedada por uma única empresa por instância — não há
+  o problema de confiança entre múltiplas organizações que blockchain resolve. Ver
+  `docs/adr/0001-sem-blockchain-postgres-ipfs.md`.
+- **Código aberto / auto-hospedável**: qualquer empresa pode subir sua própria instância com seus
+  próprios dados, nome e logo (ver Configurações, admin).
+
+Lista completa de decisões e o porquê de cada uma: [`docs/adr/`](docs/adr/).

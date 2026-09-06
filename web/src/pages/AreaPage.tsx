@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Share2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { FileExplorer } from "@/components/FileExplorer";
+import { ShareDialog } from "@/components/ShareDialog";
 import { cn } from "@/lib/utils";
 
 // Página de uma Área específica ("Marketing" etc): reúne os projetos dessa
@@ -21,6 +22,7 @@ export default function AreaPage() {
   const qc = useQueryClient();
   const [aba, setAba] = useState<"projetos" | "arquivos">("projetos");
   const [open, setOpen] = useState(false);
+  const [compartilhando, setCompartilhando] = useState(false);
   const [nome, setNome] = useState("");
 
   const { data: areas } = useQuery({ queryKey: ["areas-todas"], queryFn: api.areas.listarTodas });
@@ -44,16 +46,21 @@ export default function AreaPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-6 pt-5">
-        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <button onClick={() => navigate("/areas")} className="hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <button onClick={() => navigate("/areas")} className="hover:text-foreground">
-            Áreas
-          </button>
-          <span>›</span>
-          <span className="font-medium text-primary">{area?.nome}</span>
-          {area && <Badge variant="outline">{area.tipo}</Badge>}
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <button onClick={() => navigate("/areas")} className="hover:text-foreground">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <button onClick={() => navigate("/areas")} className="hover:text-foreground">
+              Áreas
+            </button>
+            <span>›</span>
+            <span className="font-medium text-primary">{area?.nome}</span>
+            {area && <Badge variant="outline">{area.tipo}</Badge>}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setCompartilhando(true)}>
+            <Share2 className="h-3.5 w-3.5" /> Compartilhar
+          </Button>
         </div>
         <div className="flex gap-6">
           <TabButton active={aba === "projetos"} onClick={() => setAba("projetos")}>
@@ -113,6 +120,13 @@ export default function AreaPage() {
           </div>
         </div>
       </Dialog>
+
+      <ShareDialog
+        tipo="area"
+        id={compartilhando ? areaId : null}
+        nomeRecurso={area?.nome}
+        onClose={() => setCompartilhando(false)}
+      />
     </div>
   );
 }

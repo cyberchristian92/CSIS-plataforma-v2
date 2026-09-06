@@ -20,13 +20,13 @@ export class AreasController {
   }
 
   @Get('workspaces/:workspaceId/areas')
-  listarPorWorkspace(@Param('workspaceId') workspaceId: string) {
-    return this.areasService.listarPorWorkspace(workspaceId);
+  listarPorWorkspace(@Param('workspaceId') workspaceId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.areasService.listarPorWorkspace(workspaceId, user.id, user.papel_global);
   }
 
   @Get('areas/:id')
-  buscar(@Param('id') id: string) {
-    return this.areasService.buscar(id);
+  buscar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.areasService.buscar(id, user.id, user.papel_global);
   }
 
   @Patch('areas/:id')

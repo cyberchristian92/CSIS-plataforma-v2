@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: csis_user
+      POSTGRES_PASSWORD: csis_password
+      POSTGRES_DB: csis_db
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csis_user -d csis_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://csis_user:csis_password@db:5432/csis_db?schema=public
+      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-antes-de-usar-em-producao}
+      JWT_EXPIRES_IN: "1d"
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5174}
+      PORT: 3000
+      SEED_ADMIN_NOME: ${SEED_ADMIN_NOME:-Administrador}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@csis.local}
+      SEED_ADMIN_SENHA: ${SEED_ADMIN_SENHA:-TrocarSenha123}
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+
+  # Motor de compilação do Laudo Pericial (Markdown + front-matter Eisvogel ->
+  # PDF). Container de vida longa (`sleep infinity`) controlado via `docker
+  # exec` pelo backend — evita o custo de subir um container novo a cada
+  # compilação. Build próprio porque o TeX Live do `pandoc/extra` não tem
+  # tudo que um laudo real usa (ex.: pdfpages) — aqui é TeX Live
+  # "scheme-full" + Pandoc + template eisvogel.latex.
+  pandoc:
+    build:
+      context: ./backend/pandoc
+      dockerfile: Dockerfile
+    container_name: csis_v2_pandoc_engine
+    entrypoint: ["sleep", "infinity"]
+    volumes:
+      - ./backend/laudo-workdir:/work
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:

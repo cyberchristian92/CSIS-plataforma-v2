@@ -20,13 +20,13 @@ export class ProjetosController {
   }
 
   @Get('areas/:areaId/projetos')
-  listarPorArea(@Param('areaId') areaId: string) {
-    return this.projetosService.listarPorArea(areaId);
+  listarPorArea(@Param('areaId') areaId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projetosService.listarPorArea(areaId, user.id, user.papel_global);
   }
 
   @Get('projetos/:id')
-  buscar(@Param('id') id: string) {
-    return this.projetosService.buscar(id);
+  buscar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projetosService.buscar(id, user.id, user.papel_global);
   }
 
   @Patch('projetos/:id')
