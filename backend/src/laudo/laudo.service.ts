@@ -21,7 +21,7 @@ export class LaudoService {
     return documento;
   }
 
-  async compilar(documentoId: string, userId: string) {
+  async compilar(documentoId: string, userId: string, templateArquivoId?: string) {
     const documento = await this.buscarDocumento(documentoId);
     // Compilação de laudo resolve referências de arquivo relativas ao Projeto
     // (ver LaudoCompilerService.materializarArquivosDoProjeto) — só faz
@@ -30,7 +30,25 @@ export class LaudoService {
     if (!documento.projeto_id) {
       throw new BadRequestException('Só é possível compilar laudo de um documento vinculado a um projeto.');
     }
-    const resultado = await this.compilerService.compilar(documentoId, documento.projeto_id, documento.conteudo);
+
+    let templateCaminho: string | undefined;
+    if (templateArquivoId) {
+      const template = await this.prisma.arquivo.findUnique({ where: { id: templateArquivoId } });
+      // Só aceita template que já esteja na raiz do MESMO projeto do documento
+      // — evita que alguém referencie por id um arquivo de outro projeto/área
+      // ao qual não tem acesso.
+      if (!template || template.projeto_id !== documento.projeto_id || template.pasta_id) {
+        throw new BadRequestException('Template inválido: precisa ser um arquivo na raiz deste projeto.');
+      }
+      templateCaminho = template.caminho;
+    }
+
+    const resultado = await this.compilerService.compilar(
+      documentoId,
+      documento.projeto_id,
+      documento.conteudo,
+      templateCaminho,
+    );
 
     // Amarra o PDF gerado à cadeia de custódia: o hash do binário resultante
     // fica registrado junto do hash do markdown de origem (o `conteudo` do

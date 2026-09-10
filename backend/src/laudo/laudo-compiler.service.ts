@@ -55,13 +55,33 @@ export class LaudoCompilerService {
     }
   }
 
-  async compilar(documentoId: string, projetoId: string, conteudoMarkdown: string): Promise<ResultadoCompilacaoLaudo> {
+  async compilar(
+    documentoId: string,
+    projetoId: string,
+    conteudoMarkdown: string,
+    templateCaminho?: string,
+  ): Promise<ResultadoCompilacaoLaudo> {
     const dir = join(laudoWorkdir(), documentoId);
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
 
     await this.materializarArquivosDoProjeto(projetoId, dir);
     await writeFile(join(dir, 'laudo.md'), conteudoMarkdown, 'utf8');
+
+    // Template customizado: copia o .latex enviado pra dentro do diretório de
+    // compilação com um nome fixo, e referencia esse nome no --template. Sem
+    // isso, cai no "eisvogel" já embutido na imagem do motor de compilação
+    // (ver backend/pandoc/Dockerfile) — continua funcionando pra quem nunca
+    // subiu template nenhum.
+    let nomeTemplate = 'eisvogel';
+    if (templateCaminho) {
+      nomeTemplate = 'template-customizado.latex';
+      await copyFile(templateCaminho, join(dir, nomeTemplate)).catch(() => {
+        // Se o arquivo original sumiu do disco, cai pro eisvogel em vez de
+        // travar a compilação inteira por causa de um template ausente.
+        nomeTemplate = 'eisvogel';
+      });
+    }
 
     let log = '';
     try {
@@ -77,7 +97,7 @@ export class LaudoCompilerService {
           '-o',
           'laudo.pdf',
           '--template',
-          'eisvogel',
+          nomeTemplate,
           '--pdf-engine=xelatex',
         ],
         { timeout: 120000 },

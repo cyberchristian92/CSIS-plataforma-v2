@@ -34,8 +34,19 @@ export default function DocumentEditorPage() {
     queryFn: () => api.documentos.buscar(documentoId),
     enabled: !!documentoId,
   });
+  // Templates de PDF (.latex) disponíveis: qualquer arquivo na raiz do
+  // Projeto com essa extensão — mesmo lugar de onde logo/imagens do laudo já
+  // são lidos (ver backend LaudoCompilerService.materializarArquivosDoProjeto),
+  // então "enviar template" já é só "enviar arquivo" no Explorador do Projeto.
+  const { data: arquivosProjeto } = useQuery({
+    queryKey: ["arquivos-projeto", documento?.projeto_id],
+    queryFn: () => api.arquivos.listarPorProjeto(documento!.projeto_id!),
+    enabled: !!documento?.projeto_id,
+  });
+  const templatesDisponiveis = (arquivosProjeto ?? []).filter((a) => /\.(latex|tex)$/i.test(a.nome));
   const [conteudo, setConteudo] = useState("");
   const [salvoEm, setSalvoEm] = useState<Date | null>(null);
+  const [templateId, setTemplateId] = useState("");
   const [resultadoLaudo, setResultadoLaudo] = useState<{ sucesso: boolean; log: string } | null>(null);
 
   useEffect(() => {
@@ -47,20 +58,21 @@ export default function DocumentEditorPage() {
     onSuccess: () => setSalvoEm(new Date()),
   });
 
-  // Compila o Markdown atual em PDF (Pandoc + LaTeX/Eisvogel, ver
-  // backend/src/laudo) — só existe pra documentos vinculados a um Projeto;
-  // salva antes de compilar pra nunca gerar PDF de um conteúdo que ainda não
-  // foi persistido.
-  const compilarLaudo = useMutation({
+  // Gera PDF a partir do Markdown atual (Pandoc + LaTeX) — só existe pra
+  // documentos vinculados a um Projeto; salva antes de gerar pra nunca gerar
+  // PDF de um conteúdo que ainda não foi persistido. templateId vazio usa o
+  // Eisvogel embutido no motor de compilação (ver backend/src/laudo);
+  // qualquer outro valor é o id de um .latex enviado na raiz do Projeto.
+  const gerarPdf = useMutation({
     mutationFn: async () => {
       await api.documentos.atualizar(documentoId, conteudo);
-      return api.laudo.compilar(documentoId);
+      return api.laudo.compilar(documentoId, templateId || undefined);
     },
     onSuccess: (resultado) => {
       setSalvoEm(new Date());
       setResultadoLaudo(resultado);
     },
-    onError: (e: unknown) => setResultadoLaudo({ sucesso: false, log: e instanceof ApiError ? e.message : "Falha ao compilar." }),
+    onError: (e: unknown) => setResultadoLaudo({ sucesso: false, log: e instanceof ApiError ? e.message : "Falha ao gerar o PDF." }),
   });
 
   function inserirNoCursor(antes: string, depois = "", placeholder = "") {
@@ -107,9 +119,24 @@ export default function DocumentEditorPage() {
             </span>
           )}
           {documento?.projeto_id && (
-            <Button variant="outline" onClick={() => compilarLaudo.mutate()} disabled={compilarLaudo.isPending}>
-              <FileOutput className="h-4 w-4" /> {compilarLaudo.isPending ? "Compilando…" : "Compilar Laudo"}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                title="Template do PDF"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none"
+              >
+                <option value="">Eisvogel (padrão)</option>
+                {templatesDisponiveis.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}
+                  </option>
+                ))}
+              </select>
+              <Button variant="outline" onClick={() => gerarPdf.mutate()} disabled={gerarPdf.isPending}>
+                <FileOutput className="h-4 w-4" /> {gerarPdf.isPending ? "Gerando…" : "Gerar PDF"}
+              </Button>
+            </div>
           )}
           <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
             <Save className="h-4 w-4" /> {salvar.isPending ? "Salvando…" : "Salvar"}
@@ -136,11 +163,11 @@ export default function DocumentEditorPage() {
                 rel="noreferrer"
                 className="font-medium text-primary hover:underline"
               >
-                Laudo compilado com sucesso — abrir PDF
+                PDF gerado com sucesso — abrir
               </a>
             ) : (
               <>
-                <p className="font-medium text-destructive">Falha ao compilar o laudo.</p>
+                <p className="font-medium text-destructive">Falha ao gerar o PDF.</p>
                 <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
                   {resultadoLaudo.log}
                 </pre>

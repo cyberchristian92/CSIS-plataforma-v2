@@ -287,7 +287,8 @@ export const api = {
   },
 
   laudo: {
-    compilar: (documentoId: string) => post<{ sucesso: boolean; log: string }>(`/documentos/${documentoId}/laudo/compilar`),
+    compilar: (documentoId: string, templateArquivoId?: string) =>
+      post<{ sucesso: boolean; log: string }>(`/documentos/${documentoId}/laudo/compilar`, { templateArquivoId }),
     // O PDF é servido como binário (sendFile), não JSON — a URL em si é o
     // que interessa (usada num <a>/<iframe>), não uma chamada via fetch.
     pdfUrl: (documentoId: string) => `${BASE}/documentos/${documentoId}/laudo/pdf`,
