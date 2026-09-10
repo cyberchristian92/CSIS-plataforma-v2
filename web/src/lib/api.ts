@@ -99,6 +99,7 @@ export const api = {
       );
       return areasPorWorkspace.flat();
     },
+    remover: (id: string) => del<void>(`/areas/${id}`),
   },
 
   projetos: {
@@ -106,6 +107,7 @@ export const api = {
     buscar: (id: string) => get<Projeto>(`/projetos/${id}`),
     criar: (areaId: string, nome: string, descricao?: string) =>
       post<Projeto>(`/areas/${areaId}/projetos`, { nome, descricao }),
+    remover: (id: string) => del<void>(`/projetos/${id}`),
     // Sem endpoint agregado no backend (projetos vivem só sob uma Área) —
     // agrega no cliente: workspace(s) -> áreas -> projetos de cada área.
     listarTodos: async (): Promise<Projeto[]> => {
@@ -128,6 +130,8 @@ export const api = {
     buscar: (id: string) => get<Missao>(`/missoes/${id}`),
     criar: (projetoId: string, dto: { titulo: string; descricao?: string; valor_bounty?: number; colunaId?: string }) =>
       post<Missao>(`/projetos/${projetoId}/missoes`, dto),
+    atualizar: (id: string, dto: { titulo?: string; descricao?: string; prazo?: string | null }) =>
+      patch<Missao>(`/missoes/${id}`, dto),
     mover: (id: string, colunaId: string | null, ordem: number) =>
       patch<Missao>(`/missoes/${id}/mover`, { colunaId, ordem }),
     atualizarCapa: (id: string, corCapa: string | null) => patch<Missao>(`/missoes/${id}/capa`, { corCapa }),
@@ -194,6 +198,7 @@ export const api = {
       get<Pasta[]>(`/areas/${areaId}/pastas${pastaPaiId ? `?pastaPaiId=${pastaPaiId}` : ""}`),
     criarEmArea: (areaId: string, nome: string, pastaPaiId?: string) =>
       post<Pasta>(`/areas/${areaId}/pastas`, { nome, pastaPaiId }),
+    renomear: (id: string, nome: string) => patch<Pasta>(`/pastas/${id}`, { nome }),
     remover: (id: string) => del<void>(`/pastas/${id}`),
   },
 
@@ -232,6 +237,7 @@ export const api = {
       `/arquivos/${id}/verificar`,
     ),
     renomear: (id: string, nome: string) => patch<Arquivo>(`/arquivos/${id}`, { nome }),
+    remover: (id: string) => del<void>(`/arquivos/${id}`),
   },
 
   listas: {

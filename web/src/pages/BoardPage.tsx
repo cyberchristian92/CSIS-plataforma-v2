@@ -14,7 +14,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Pencil, Plus, Tag } from "lucide-react";
+import { Calendar, Pencil, Plus, Tag } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Coluna, Missao } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePromptDialog } from "@/components/ui/prompt-dialog";
-import { cn } from "@/lib/utils";
+import { cn, formatDateOnly } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { MissionDialog } from "@/components/MissionDialog";
 
 // Board Kanban livre — tão amplo quanto o Trello: colunas e cards podem ser
 // reorganizados sem restrição visual. Mover um card aqui só atualiza a
@@ -37,6 +38,7 @@ export default function BoardPage() {
   const qc = useQueryClient();
   const [activeMissao, setActiveMissao] = useState<Missao | null>(null);
   const [colunaEditando, setColunaEditando] = useState<Coluna | null>(null);
+  const [missaoAberta, setMissaoAberta] = useState<string | null>(null);
   const { user } = useAuth();
   const podeGerenciarMissoes = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const { ask, dialog: promptDialog } = usePromptDialog();
@@ -146,6 +148,7 @@ export default function BoardPage() {
               missoes={(missoes ?? []).filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
               onNovaMissao={podeGerenciarMissoes ? () => criarMissao.mutate(coluna.id) : undefined}
               onEditar={() => setColunaEditando(coluna)}
+              onAbrirMissao={setMissaoAberta}
             />
           ))}
 
@@ -155,6 +158,7 @@ export default function BoardPage() {
               missoes={semColuna}
               onNovaMissao={undefined}
               onEditar={() => {}}
+              onAbrirMissao={setMissaoAberta}
             />
           )}
         </div>
@@ -163,6 +167,7 @@ export default function BoardPage() {
       </DndContext>
 
       <EditarColunaDialog coluna={colunaEditando} onClose={() => setColunaEditando(null)} />
+      <MissionDialog missaoId={missaoAberta} onClose={() => setMissaoAberta(null)} />
       {promptDialog}
     </div>
   );
@@ -173,11 +178,13 @@ function ColunaColumn({
   missoes,
   onNovaMissao,
   onEditar,
+  onAbrirMissao,
 }: {
   coluna: Coluna;
   missoes: Missao[];
   onNovaMissao: (() => void) | undefined;
   onEditar: () => void;
+  onAbrirMissao: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const acimaDoLimite = !!coluna.limite_wip && missoes.length > coluna.limite_wip;
@@ -209,7 +216,7 @@ function ColunaColumn({
       <SortableContext items={missoes.map((m) => m.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-2">
           {missoes.map((missao) => (
-            <MissaoCard key={missao.id} missao={missao} />
+            <MissaoCard key={missao.id} missao={missao} onAbrir={() => onAbrirMissao(missao.id)} />
           ))}
         </div>
       </SortableContext>
@@ -302,7 +309,7 @@ const STATUS_VARIANT: Record<Missao["status"], "secondary" | "outline" | "defaul
   REJEITADA: "destructive",
 };
 
-function MissaoCard({ missao, overlay }: { missao: Missao; overlay?: boolean }) {
+function MissaoCard({ missao, overlay, onAbrir }: { missao: Missao; overlay?: boolean; onAbrir?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: missao.id });
 
   const style = {
@@ -311,20 +318,42 @@ function MissaoCard({ missao, overlay }: { missao: Missao; overlay?: boolean }) 
     borderLeft: missao.cor_capa ? `3px solid ${missao.cor_capa}` : undefined,
   };
 
+  const atrasada =
+    !!missao.prazo && new Date(missao.prazo) < new Date() && !["APROVADA", "REJEITADA"].includes(missao.status);
+
   return (
     <div
       ref={overlay ? undefined : setNodeRef}
       style={overlay ? undefined : style}
       {...(overlay ? {} : { ...attributes, ...listeners })}
+      onClick={overlay ? undefined : onAbrir}
       className={cn(
         "cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm active:cursor-grabbing",
         isDragging && "opacity-40",
         overlay && "rotate-2 shadow-lg",
       )}
     >
+      {missao.labels && missao.labels.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1">
+          {missao.labels.map((l) => (
+            <span
+              key={l.label.id}
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white/90"
+              style={{ backgroundColor: l.label.cor }}
+            >
+              {l.label.nome}
+            </span>
+          ))}
+        </div>
+      )}
       <p className="text-sm font-medium leading-snug">{missao.titulo}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant={STATUS_VARIANT[missao.status]}>{STATUS_LABEL[missao.status]}</Badge>
+        {missao.prazo && (
+          <Badge variant="outline" className={cn("gap-1", atrasada && "border-destructive text-destructive")}>
+            <Calendar className="h-2.5 w-2.5" /> {formatDateOnly(missao.prazo)}
+          </Badge>
+        )}
         {missao.tags?.map((tag) => (
           <Badge key={tag} variant="outline" className="gap-1">
             <Tag className="h-2.5 w-2.5" />

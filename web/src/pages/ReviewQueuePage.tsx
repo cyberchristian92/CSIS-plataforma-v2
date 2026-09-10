@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MissionDialog } from "@/components/MissionDialog";
 import { formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 // Fila de Revisão — só ADMIN/LIDER/REVISOR (ver Sidebar.tsx e o gate de rota
 // em App.tsx). A trava de Segregação de Funções (revisor não pode aprovar a
-// própria entrega) é sempre aplicada no servidor; se o usuário tentar mesmo
-// assim, o erro aparece inline, sem o botão ser escondido de antemão.
+// própria entrega) é sempre aplicada no servidor — o front só espelha essa
+// regra desabilitando o botão de antemão, pra não deixar o usuário clicar e
+// levar um erro que ele não esperava.
 export default function ReviewQueuePage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [missaoAberta, setMissaoAberta] = useState<string | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
 
@@ -34,6 +37,7 @@ export default function ReviewQueuePage() {
       <div className="flex flex-col gap-3">
         {missoes?.map((m) => {
           const entrega = m.entregas?.[0];
+          const isPropriaEntrega = !!entrega && entrega.autor_id === user?.id;
           return (
             <Card key={m.id}>
               <CardHeader className="flex-row items-center justify-between space-y-0 py-3">
@@ -49,17 +53,27 @@ export default function ReviewQueuePage() {
                 <Badge variant="outline">Em Revisão</Badge>
               </CardHeader>
               {entrega?.conteudo && <CardContent className="pt-0 text-sm">{entrega.conteudo}</CardContent>}
+              {isPropriaEntrega && (
+                <CardContent className="pt-0 text-xs text-muted-foreground">
+                  Você enviou esta entrega — por Segregação de Funções, outra pessoa precisa revisá-la.
+                </CardContent>
+              )}
               {erros[entrega?.id ?? ""] && (
                 <CardContent className="pt-0 text-xs text-destructive">{erros[entrega!.id]}</CardContent>
               )}
               {entrega && (
                 <CardContent className="flex gap-2 pt-0">
-                  <Button size="sm" onClick={() => revisar.mutate({ entregaId: entrega.id, status: "APROVADO" })}>
+                  <Button
+                    size="sm"
+                    disabled={isPropriaEntrega}
+                    onClick={() => revisar.mutate({ entregaId: entrega.id, status: "APROVADO" })}
+                  >
                     <Check className="h-3.5 w-3.5" /> Aprovar
                   </Button>
                   <Button
                     size="sm"
                     variant="destructive"
+                    disabled={isPropriaEntrega}
                     onClick={() => revisar.mutate({ entregaId: entrega.id, status: "REJEITADO" })}
                   >
                     <X className="h-3.5 w-3.5" /> Rejeitar

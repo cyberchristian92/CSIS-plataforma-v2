@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Paperclip, Plus, Tag, Trash2, Users, X } from "lucide-react";
+import { Calendar, Check, Pencil, Plus, Tag, Trash2, Users, X } from "lucide-react";
 import { Dialog } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Avatar } from "./ui/avatar";
+import { useConfirmDialog } from "./ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatDateOnly } from "@/lib/utils";
 import { LABEL_PALETTE, STATUS_COLORS, STATUS_LABELS } from "@/lib/theme-constants";
 import type { User } from "@/lib/types";
 
@@ -15,8 +16,10 @@ import type { User } from "@/lib/types";
 // espalhado (status, capa, labels, responsáveis, checklist, Entrega+Revisão,
 // comentários) num só lugar. As transições de status (Iniciar / Fazer
 // Entrega / Aprovar / Rejeitar) não escondem botões por papel — o servidor
-// é a fonte de verdade (SoD em revisoes.service.ts) e o erro aparece inline,
-// replicando o comportamento do app original.
+// é a fonte de verdade (SoD em revisoes.service.ts) e qualquer erro do
+// servidor aparece inline. A única exceção é a própria trava de SoD: como
+// sabemos de antemão quem é o autor da entrega, o botão já nasce desabilitado
+// em vez de deixar o usuário clicar pra descobrir (ver ehPropriaEntrega).
 
 export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; onClose: () => void }) {
   const { user } = useAuth();
@@ -31,6 +34,12 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
   const [novaLabel, setNovaLabel] = useState(false);
   const [nomeLabel, setNomeLabel] = useState("");
   const [corLabel, setCorLabel] = useState<string>(LABEL_PALETTE[0]);
+  const [labelEditandoId, setLabelEditandoId] = useState<string | null>(null);
+  const [editandoInfo, setEditandoInfo] = useState(false);
+  const [tituloEdit, setTituloEdit] = useState("");
+  const [descricaoEdit, setDescricaoEdit] = useState("");
+  const [prazoEdit, setPrazoEdit] = useState("");
+  const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
 
   const open = !!missaoId;
 
@@ -88,6 +97,38 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
 
   const iniciar = useMutation({ mutationFn: () => api.missoes.iniciar(missaoId!), onSuccess: invalidarMissao });
 
+  const atualizarInfo = useMutation({
+    mutationFn: () =>
+      api.missoes.atualizar(missaoId!, {
+        titulo: tituloEdit,
+        descricao: descricaoEdit || undefined,
+        prazo: prazoEdit || undefined,
+      }),
+    onSuccess: () => {
+      setEditandoInfo(false);
+      invalidarMissao();
+    },
+  });
+
+  const removerMissao = useMutation({
+    mutationFn: () => api.missoes.remover(missaoId!),
+    onSuccess: () => {
+      invalidarMissao();
+      onClose();
+    },
+  });
+
+  async function pedirExclusaoMissao() {
+    if (!missao) return;
+    const ok = await confirmar({
+      titulo: `Excluir "${missao.titulo}"?`,
+      descricao: "Apaga a missão e tudo dentro dela (arquivos, checklist, comentários, entregas). Não pode ser desfeito.",
+      textoConfirmar: "Excluir missão",
+      destrutivo: true,
+    });
+    if (ok) removerMissao.mutate();
+  }
+
   const enviarEntrega = useMutation({
     mutationFn: () => api.entregas.criar(missaoId!, conteudoEntrega || undefined),
     onSuccess: () => {
@@ -121,6 +162,34 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
       qc.invalidateQueries({ queryKey: ["missao-labels", missao?.projeto_id] });
     },
   });
+
+  const salvarLabel = useMutation({
+    mutationFn: () => api.missaoLabels.atualizar(labelEditandoId!, { nome: nomeLabel, cor: corLabel }),
+    onSuccess: () => {
+      setLabelEditandoId(null);
+      setNomeLabel("");
+      qc.invalidateQueries({ queryKey: ["missao-labels", missao?.projeto_id] });
+      invalidarMissao();
+    },
+  });
+
+  const removerLabel = useMutation({
+    mutationFn: (id: string) => api.missaoLabels.remover(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["missao-labels", missao?.projeto_id] });
+      invalidarMissao();
+    },
+  });
+
+  async function pedirExclusaoLabel(nome: string, id: string) {
+    const ok = await confirmar({
+      titulo: `Excluir label "${nome}"?`,
+      descricao: "Remove a label de todas as missões do projeto que a usam.",
+      textoConfirmar: "Excluir",
+      destrutivo: true,
+    });
+    if (ok) removerLabel.mutate(id);
+  }
 
   const atualizarCapa = useMutation({
     mutationFn: (cor: string | null) => api.missoes.atualizarCapa(missaoId!, cor),
@@ -182,16 +251,90 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
 
   const ultimaEntrega = entregas?.[0];
   const podeAprovarRejeitar = ultimaEntrega?.status === "EM_REVISAO" && missao.status === "EM_REVISAO";
+  const ehPropriaEntrega = !!ultimaEntrega && ultimaEntrega.autor_id === user?.id;
+  const missaoAtrasada =
+    !!missao.prazo && new Date(missao.prazo) < new Date() && !["APROVADA", "REJEITADA"].includes(missao.status);
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} className="max-w-2xl max-h-[85vh] overflow-y-auto">
-      <div className="flex items-start justify-between gap-3 pr-6">
-        <h2 className="text-lg font-bold">{missao.titulo}</h2>
-        <Badge style={{ backgroundColor: STATUS_COLORS[missao.status], color: "#050F1C", borderColor: "transparent" }}>
-          {STATUS_LABELS[missao.status] ?? missao.status}
+      {editandoInfo ? (
+        <div className="flex flex-col gap-2 pr-6">
+          <input
+            value={tituloEdit}
+            onChange={(e) => setTituloEdit(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-2 text-lg font-bold focus:outline-none"
+            autoFocus
+          />
+          <textarea
+            value={descricaoEdit}
+            onChange={(e) => setDescricaoEdit(e.target.value)}
+            placeholder="Descrição…"
+            className="min-h-16 rounded-md border border-border bg-background p-2 text-sm focus:outline-none"
+          />
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="date"
+              value={prazoEdit}
+              onChange={(e) => setPrazoEdit(e.target.value)}
+              className="h-8 rounded-md border border-border bg-background px-2 text-sm focus:outline-none"
+            />
+            <span className="text-xs text-muted-foreground">Prazo</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!tituloEdit.trim() || atualizarInfo.isPending} onClick={() => atualizarInfo.mutate()}>
+              Salvar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditandoInfo(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start justify-between gap-3 pr-6">
+          <div className="group flex items-start gap-1.5">
+            <h2 className="text-lg font-bold">{missao.titulo}</h2>
+            {podeGerenciar && (
+              <button
+                onClick={() => {
+                  setTituloEdit(missao.titulo);
+                  setDescricaoEdit(missao.descricao ?? "");
+                  setPrazoEdit(missao.prazo ? missao.prazo.slice(0, 10) : "");
+                  setEditandoInfo(true);
+                }}
+                className="mt-1 shrink-0 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100"
+                title="Editar título/descrição"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge style={{ backgroundColor: STATUS_COLORS[missao.status], color: "#050F1C", borderColor: "transparent" }}>
+              {STATUS_LABELS[missao.status] ?? missao.status}
+            </Badge>
+            {podeGerenciar && (
+              <button
+                onClick={pedirExclusaoMissao}
+                className="text-muted-foreground hover:text-destructive"
+                title="Excluir missão"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {!editandoInfo && missao.descricao && <p className="mt-2 text-sm text-muted-foreground">{missao.descricao}</p>}
+      {!editandoInfo && missao.prazo && (
+        <Badge
+          variant="outline"
+          className={cn("mt-2 gap-1", missaoAtrasada && "border-destructive text-destructive")}
+        >
+          <Calendar className="h-3 w-3" /> {formatDateOnly(missao.prazo)}
         </Badge>
-      </div>
-      {missao.descricao && <p className="mt-2 text-sm text-muted-foreground">{missao.descricao}</p>}
+      )}
 
       {erro && (
         <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -230,33 +373,60 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
           {projectLabels?.map((label) => {
             const ativa = missao.labels?.some((l) => l.label.id === label.id);
             return (
-              <button
-                key={label.id}
-                onClick={() => {
-                  const atuais = missao.labels?.map((l) => l.label.id) ?? [];
-                  toggleLabel.mutate(ativa ? atuais.filter((id) => id !== label.id) : [...atuais, label.id]);
-                }}
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-xs font-medium text-white/90",
-                  !ativa && "opacity-40 hover:opacity-70",
-                )}
-                style={{ backgroundColor: label.cor }}
-              >
-                {label.nome}
-              </button>
+              <div key={label.id} className="group relative">
+                <button
+                  onClick={() => {
+                    const atuais = missao.labels?.map((l) => l.label.id) ?? [];
+                    toggleLabel.mutate(ativa ? atuais.filter((id) => id !== label.id) : [...atuais, label.id]);
+                  }}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-xs font-medium text-white/90",
+                    !ativa && "opacity-40 hover:opacity-70",
+                  )}
+                  style={{ backgroundColor: label.cor }}
+                >
+                  {label.nome}
+                </button>
+                <div className="absolute -right-1 -top-1.5 hidden items-center gap-0.5 rounded-full bg-card p-0.5 shadow group-hover:flex">
+                  <button
+                    onClick={() => {
+                      setNovaLabel(false);
+                      setLabelEditandoId(label.id);
+                      setNomeLabel(label.nome);
+                      setCorLabel(label.cor);
+                    }}
+                    className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                    title="Editar label"
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
+                  <button
+                    onClick={() => pedirExclusaoLabel(label.nome, label.id)}
+                    className="rounded-full p-0.5 text-muted-foreground hover:text-destructive"
+                    title="Excluir label"
+                  >
+                    <Trash2 className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              </div>
             );
           })}
           {(!projectLabels || projectLabels.length === 0) && !novaLabel && (
             <p className="text-xs text-muted-foreground">Nenhuma label criada neste projeto ainda.</p>
           )}
           <button
-            onClick={() => setNovaLabel((v) => !v)}
+            onClick={() => {
+              setLabelEditandoId(null);
+              setNomeLabel("");
+              setCorLabel(LABEL_PALETTE[0]);
+              setNovaLabel((v) => !v);
+            }}
             className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
           >
             + nova label
           </button>
         </div>
-        {novaLabel && (
+        {(novaLabel || labelEditandoId) && (
           <div className="mt-2 flex items-center gap-2">
             <input
               value={nomeLabel}
@@ -274,9 +444,20 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
                 />
               ))}
             </div>
-            <Button size="sm" disabled={!nomeLabel.trim() || criarLabel.isPending} onClick={() => criarLabel.mutate()}>
-              Criar
-            </Button>
+            {labelEditandoId ? (
+              <>
+                <Button size="sm" disabled={!nomeLabel.trim() || salvarLabel.isPending} onClick={() => salvarLabel.mutate()}>
+                  Salvar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setLabelEditandoId(null)}>
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" disabled={!nomeLabel.trim() || criarLabel.isPending} onClick={() => criarLabel.mutate()}>
+                Criar
+              </Button>
+            )}
           </div>
         )}
       </Section>
@@ -373,17 +554,29 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
           </div>
         )}
         {podeAprovarRejeitar && (
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "APROVADO" })}>
-              <Check className="h-3.5 w-3.5" /> Aprovar
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "REJEITADO" })}
-            >
-              <X className="h-3.5 w-3.5" /> Rejeitar
-            </Button>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {ehPropriaEntrega && (
+              <p className="text-xs text-muted-foreground">
+                Você enviou esta entrega — por Segregação de Funções, outra pessoa precisa revisá-la.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={ehPropriaEntrega}
+                onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "APROVADO" })}
+              >
+                <Check className="h-3.5 w-3.5" /> Aprovar
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={ehPropriaEntrega}
+                onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "REJEITADO" })}
+              >
+                <X className="h-3.5 w-3.5" /> Rejeitar
+              </Button>
+            </div>
           </div>
         )}
       </Section>
@@ -498,6 +691,8 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
         </div>
       </Section>
     </Dialog>
+    {confirmDialog}
+    </>
   );
 }
 

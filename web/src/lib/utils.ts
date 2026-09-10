@@ -20,6 +20,19 @@ export function formatDate(iso: string): string {
   });
 }
 
+// Para campos "só data" (ex.: prazo de Missão) — vêm do backend como meia-noite
+// UTC. Formatar em fuso local (como formatDate faz) desloca um dia pra trás em
+// qualquer fuso atrás de UTC (Brasil incluído). Lendo os componentes em UTC
+// em vez de local, a data exibida bate com a que a pessoa escolheu no picker.
+export function formatDateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 // O modelo Documento não tem campo de título (ver backend/prisma/schema.prisma
 // — só `conteudo`) — o nome exibido é derivado do primeiro heading/linha do
 // markdown, do jeito que o Flutter original também fazia.
