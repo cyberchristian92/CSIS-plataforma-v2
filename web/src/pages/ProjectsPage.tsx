@@ -1,21 +1,26 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Download, Plus, RefreshCw } from "lucide-react";
+import { Download, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = { ATIVO: "ATIVO", ARQUIVADO: "ARQUIVADO", CONCLUIDO: "CONCLUÍDO" };
 
 export default function ProjectsPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const podeGerenciar = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [areaId, setAreaId] = useState("");
+  const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
 
   const { data: projetos, isFetching } = useQuery({ queryKey: ["projetos-todos"], queryFn: api.projetos.listarTodos });
   const { data: areas } = useQuery({ queryKey: ["areas-todas"], queryFn: api.areas.listarTodas });
@@ -42,6 +47,22 @@ export default function ProjectsPage() {
       setDescricao("");
     },
   });
+
+  const removerProjeto = useMutation({
+    mutationFn: (id: string) => api.projetos.remover(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projetos-todos"] }),
+  });
+
+  async function pedirExclusao(nomeProjeto: string, id: string) {
+    const ok = await confirmar({
+      titulo: `Excluir o projeto "${nomeProjeto}"?`,
+      descricao:
+        "Isso apaga o projeto e tudo dentro dele — missões, arquivos, pastas, documentos e permissões. Não pode ser desfeito.",
+      textoConfirmar: "Excluir projeto",
+      destrutivo: true,
+    });
+    if (ok) removerProjeto.mutate(id);
+  }
 
   return (
     <div className="p-6">
@@ -80,13 +101,24 @@ export default function ProjectsPage() {
                 <td className="px-4 py-3 text-muted-foreground">{p.prazo ? formatDate(p.prazo) : "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{missoesPorProjeto?.[p.id] ?? 0} mis.</td>
                 <td className="px-4 py-3 text-right">
-                  <a
-                    href={`/api/projetos/${p.id}/exportar`}
-                    title="Exportar projeto (ZIP com hashes de integridade)"
-                    className="inline-flex text-muted-foreground hover:text-primary"
-                  >
-                    <Download className="h-4 w-4" />
-                  </a>
+                  <div className="flex items-center justify-end gap-3">
+                    <a
+                      href={`/api/projetos/${p.id}/exportar`}
+                      title="Exportar projeto (ZIP com hashes de integridade)"
+                      className="inline-flex text-muted-foreground hover:text-primary"
+                    >
+                      <Download className="h-4 w-4" />
+                    </a>
+                    {podeGerenciar && (
+                      <button
+                        onClick={() => pedirExclusao(p.nome, p.id)}
+                        title="Excluir projeto"
+                        className="inline-flex text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -143,6 +175,7 @@ export default function ProjectsPage() {
           </div>
         </div>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

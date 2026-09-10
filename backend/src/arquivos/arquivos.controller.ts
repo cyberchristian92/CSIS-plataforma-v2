@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -96,5 +97,10 @@ export class ArquivosController {
   @Patch('arquivos/:id')
   renomear(@Param('id') id: string, @Body() dto: RenameArquivoDto, @CurrentUser() user: AuthenticatedUser) {
     return this.arquivosService.renomear(id, dto.nome, user.id);
+  }
+
+  @Delete('arquivos/:id')
+  remover(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.arquivosService.remover(id, user.id);
   }
 }

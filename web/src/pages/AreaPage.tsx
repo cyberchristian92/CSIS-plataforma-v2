@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Plus, Share2, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { FileExplorer } from "@/components/FileExplorer";
 import { ShareDialog } from "@/components/ShareDialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 // Página de uma Área específica ("Marketing" etc): reúne os projetos dessa
@@ -20,10 +22,13 @@ export default function AreaPage() {
   const { areaId = "" } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const podeGerenciar = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const [aba, setAba] = useState<"projetos" | "arquivos">("projetos");
   const [open, setOpen] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
   const [nome, setNome] = useState("");
+  const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
 
   const { data: areas } = useQuery({ queryKey: ["areas-todas"], queryFn: api.areas.listarTodas });
   const area = areas?.find((a) => a.id === areaId);
@@ -43,6 +48,42 @@ export default function AreaPage() {
     },
   });
 
+  const removerProjeto = useMutation({
+    mutationFn: (id: string) => api.projetos.remover(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projetos-area", areaId] }),
+  });
+
+  const removerArea = useMutation({
+    mutationFn: () => api.areas.remover(areaId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["areas-todas"] });
+      navigate("/areas");
+    },
+  });
+
+  async function pedirExclusaoProjeto(nomeProjeto: string, id: string) {
+    const ok = await confirmar({
+      titulo: `Excluir o projeto "${nomeProjeto}"?`,
+      descricao:
+        "Isso apaga o projeto e tudo dentro dele — missões, arquivos, pastas, documentos e permissões. Não pode ser desfeito.",
+      textoConfirmar: "Excluir projeto",
+      destrutivo: true,
+    });
+    if (ok) removerProjeto.mutate(id);
+  }
+
+  async function pedirExclusaoArea() {
+    if (!area) return;
+    const ok = await confirmar({
+      titulo: `Excluir a área "${area.nome}"?`,
+      descricao:
+        "Isso apaga a área e TODOS os projetos dentro dela — missões, arquivos, pastas, documentos e permissões inclusos. Não pode ser desfeito.",
+      textoConfirmar: "Excluir área",
+      destrutivo: true,
+    });
+    if (ok) removerArea.mutate();
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-6 pt-5">
@@ -58,9 +99,16 @@ export default function AreaPage() {
             <span className="font-medium text-primary">{area?.nome}</span>
             {area && <Badge variant="outline">{area.tipo}</Badge>}
           </div>
-          <Button size="sm" variant="outline" onClick={() => setCompartilhando(true)}>
-            <Share2 className="h-3.5 w-3.5" /> Compartilhar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCompartilhando(true)}>
+              <Share2 className="h-3.5 w-3.5" /> Compartilhar
+            </Button>
+            {podeGerenciar && (
+              <Button size="sm" variant="destructive" onClick={pedirExclusaoArea}>
+                <Trash2 className="h-3.5 w-3.5" /> Excluir área
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex gap-6">
           <TabButton active={aba === "projetos"} onClick={() => setAba("projetos")}>
@@ -82,16 +130,30 @@ export default function AreaPage() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {projetos?.map((p) => (
-                <Link key={p.id} to={`/projetos/${p.id}`}>
-                  <Card className="h-full hover:border-primary/40">
-                    <CardContent className="p-4">
-                      <p className="font-medium">{p.nome}</p>
-                      <Badge variant="outline" className="mt-2">
-                        {p.status}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
+                <div key={p.id} className="group relative">
+                  <Link to={`/projetos/${p.id}`}>
+                    <Card className="h-full hover:border-primary/40">
+                      <CardContent className="p-4">
+                        <p className="font-medium">{p.nome}</p>
+                        <Badge variant="outline" className="mt-2">
+                          {p.status}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                  {podeGerenciar && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        pedirExclusaoProjeto(p.nome, p.id);
+                      }}
+                      className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 hover:bg-background hover:text-destructive group-hover:opacity-100"
+                      title="Excluir projeto"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
               {projetos?.length === 0 && (
                 <p className="text-sm text-muted-foreground">Nenhum projeto nesta área ainda.</p>
@@ -127,6 +189,7 @@ export default function AreaPage() {
         nomeRecurso={area?.nome}
         onClose={() => setCompartilhando(false)}
       />
+      {confirmDialog}
     </div>
   );
 }

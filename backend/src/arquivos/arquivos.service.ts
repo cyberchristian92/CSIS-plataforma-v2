@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { EVT_CONTEUDO_ALTERADO } from '../integridade/integridade.events';
+import { EVT_CONTEUDO_ALTERADO, EVT_CONTEUDO_REMOVIDO } from '../integridade/integridade.events';
 import { sha256Buffer } from './utils/hash.util';
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
@@ -142,5 +142,28 @@ export class ArquivosService {
     // hash do pai precisa refletir o novo nome.
     this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id, userId });
     return atualizado;
+  }
+
+  async remover(id: string, userId: string) {
+    const anterior = await this.buscar(id);
+    // Tolerante a arquivo já ausente do disco (ex.: alguém apagou manualmente)
+    // — a exclusão do registro não deve travar por causa disso.
+    await unlink(anterior.caminho).catch(() => undefined);
+    await this.prisma.arquivo.delete({ where: { id } });
+    await this.auditoriaService.registrar(userId, 'REMOVER', 'Arquivo', id, {
+      nome: anterior.nome,
+      hash_sha256: anterior.hash_sha256,
+    }, null);
+    this.eventos.emit(EVT_CONTEUDO_REMOVIDO, {
+      escopo: {
+        pasta_id: anterior.pasta_id,
+        missao_id: anterior.pasta_id ? null : anterior.missao_id,
+        projeto_id: anterior.pasta_id ? null : anterior.projeto_id,
+        area_id: anterior.pasta_id ? null : anterior.area_id,
+        workspace_id: anterior.pasta_id ? null : anterior.workspace_id,
+      },
+      userId,
+    });
+    return { ok: true };
   }
 }
