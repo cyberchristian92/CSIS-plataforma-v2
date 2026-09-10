@@ -14,7 +14,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar, Pencil, Plus, Tag } from "lucide-react";
+import { Calendar, Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Coluna, Missao } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePromptDialog } from "@/components/ui/prompt-dialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn, formatDateOnly } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { MissionDialog } from "@/components/MissionDialog";
@@ -42,6 +43,7 @@ export default function BoardPage() {
   const { user } = useAuth();
   const podeGerenciarMissoes = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const { ask, dialog: promptDialog } = usePromptDialog();
+  const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
 
   const { data: colunas } = useQuery({
     queryKey: ["colunas", projetoId],
@@ -89,6 +91,21 @@ export default function BoardPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["missoes", projetoId] }),
   });
+
+  const removerMissao = useMutation({
+    mutationFn: (id: string) => api.missoes.remover(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["missoes", projetoId] }),
+  });
+
+  async function pedirExclusaoMissao(missao: Missao) {
+    const ok = await confirmar({
+      titulo: `Excluir "${missao.titulo}"?`,
+      descricao: "Apaga a missão e tudo dentro dela (arquivos, checklist, comentários, entregas). Não pode ser desfeito.",
+      textoConfirmar: "Excluir missão",
+      destrutivo: true,
+    });
+    if (ok) removerMissao.mutate(missao.id);
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -149,6 +166,7 @@ export default function BoardPage() {
               onNovaMissao={podeGerenciarMissoes ? () => criarMissao.mutate(coluna.id) : undefined}
               onEditar={() => setColunaEditando(coluna)}
               onAbrirMissao={setMissaoAberta}
+              onExcluirMissao={podeGerenciarMissoes ? pedirExclusaoMissao : undefined}
             />
           ))}
 
@@ -159,6 +177,7 @@ export default function BoardPage() {
               onNovaMissao={undefined}
               onEditar={() => {}}
               onAbrirMissao={setMissaoAberta}
+              onExcluirMissao={podeGerenciarMissoes ? pedirExclusaoMissao : undefined}
             />
           )}
         </div>
@@ -169,6 +188,7 @@ export default function BoardPage() {
       <EditarColunaDialog coluna={colunaEditando} onClose={() => setColunaEditando(null)} />
       <MissionDialog missaoId={missaoAberta} onClose={() => setMissaoAberta(null)} />
       {promptDialog}
+      {confirmDialog}
     </div>
   );
 }
@@ -179,12 +199,14 @@ function ColunaColumn({
   onNovaMissao,
   onEditar,
   onAbrirMissao,
+  onExcluirMissao,
 }: {
   coluna: Coluna;
   missoes: Missao[];
   onNovaMissao: (() => void) | undefined;
   onEditar: () => void;
   onAbrirMissao: (id: string) => void;
+  onExcluirMissao: ((missao: Missao) => void) | undefined;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const acimaDoLimite = !!coluna.limite_wip && missoes.length > coluna.limite_wip;
@@ -216,7 +238,12 @@ function ColunaColumn({
       <SortableContext items={missoes.map((m) => m.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-2">
           {missoes.map((missao) => (
-            <MissaoCard key={missao.id} missao={missao} onAbrir={() => onAbrirMissao(missao.id)} />
+            <MissaoCard
+              key={missao.id}
+              missao={missao}
+              onAbrir={() => onAbrirMissao(missao.id)}
+              onExcluir={onExcluirMissao ? () => onExcluirMissao(missao) : undefined}
+            />
           ))}
         </div>
       </SortableContext>
@@ -309,7 +336,17 @@ const STATUS_VARIANT: Record<Missao["status"], "secondary" | "outline" | "defaul
   REJEITADA: "destructive",
 };
 
-function MissaoCard({ missao, overlay, onAbrir }: { missao: Missao; overlay?: boolean; onAbrir?: () => void }) {
+function MissaoCard({
+  missao,
+  overlay,
+  onAbrir,
+  onExcluir,
+}: {
+  missao: Missao;
+  overlay?: boolean;
+  onAbrir?: () => void;
+  onExcluir?: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: missao.id });
 
   const style = {
@@ -328,11 +365,23 @@ function MissaoCard({ missao, overlay, onAbrir }: { missao: Missao; overlay?: bo
       {...(overlay ? {} : { ...attributes, ...listeners })}
       onClick={overlay ? undefined : onAbrir}
       className={cn(
-        "cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm active:cursor-grabbing",
+        "group/card relative cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm active:cursor-grabbing",
         isDragging && "opacity-40",
         overlay && "rotate-2 shadow-lg",
       )}
     >
+      {onExcluir && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onExcluir();
+          }}
+          title="Excluir missão"
+          className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-destructive group-hover/card:opacity-100"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
       {missao.labels && missao.labels.length > 0 && (
         <div className="mb-1.5 flex flex-wrap gap-1">
           {missao.labels.map((l) => (
@@ -346,7 +395,9 @@ function MissaoCard({ missao, overlay, onAbrir }: { missao: Missao; overlay?: bo
           ))}
         </div>
       )}
-      <p className="text-sm font-medium leading-snug">{missao.titulo}</p>
+      <p title={missao.titulo} className="line-clamp-2 pr-5 text-sm font-medium leading-snug">
+        {missao.titulo}
+      </p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Badge variant={STATUS_VARIANT[missao.status]}>{STATUS_LABEL[missao.status]}</Badge>
         {missao.prazo && (
