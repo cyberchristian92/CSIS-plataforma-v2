@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,8 +14,8 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar, Pencil, Plus, Tag, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { Calendar, Check, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 import type { Coluna, Missao } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,12 @@ export default function BoardPage() {
   const podeGerenciarMissoes = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const { ask, dialog: promptDialog } = usePromptDialog();
   const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
+  const inputSincronizarRef = useRef<HTMLInputElement>(null);
+  const [resultadoSync, setResultadoSync] = useState<{
+    sucesso: boolean;
+    mensagem: string;
+    avisos?: string[];
+  } | null>(null);
 
   const { data: colunas } = useQuery({
     queryKey: ["colunas", projetoId],
@@ -97,6 +103,29 @@ export default function BoardPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["missoes", projetoId] }),
   });
 
+  // Reenvia um pacote baixado via "Exportar" (e editado localmente — ver
+  // COMO_SINCRONIZAR.md dentro do próprio zip) pra criar, dentro deste mesmo
+  // projeto, só o que é novo (missão sem id, documento sem id, arquivo sem
+  // id no manifesto.json). Nunca mexe no que já existe.
+  const sincronizar = useMutation({
+    mutationFn: (arquivo: File) => api.projetos.sincronizar(projetoId, arquivo),
+    onSuccess: (resultado) => {
+      qc.invalidateQueries({ queryKey: ["missoes", projetoId] });
+      const partes = [
+        resultado.missoes_criadas > 0 ? `${resultado.missoes_criadas} missão(ões)` : null,
+        resultado.documentos_criados > 0 ? `${resultado.documentos_criados} documento(s)` : null,
+        resultado.arquivos_criados > 0 ? `${resultado.arquivos_criados} arquivo(s)` : null,
+      ].filter(Boolean);
+      setResultadoSync({
+        sucesso: true,
+        mensagem: partes.length > 0 ? `Sincronizado: ${partes.join(", ")} adicionado(s).` : "Pacote sincronizado — nada de novo pra adicionar.",
+        avisos: resultado.avisos,
+      });
+    },
+    onError: (e: unknown) =>
+      setResultadoSync({ sucesso: false, mensagem: e instanceof ApiError ? e.message : "Falha ao sincronizar o pacote." }),
+  });
+
   async function pedirExclusaoMissao(missao: Missao) {
     const ok = await confirmar({
       titulo: `Excluir "${missao.titulo}"?`,
@@ -146,6 +175,30 @@ export default function BoardPage() {
   return (
     <div className="flex h-full flex-col p-6">
       <div className="mb-4 flex items-center justify-end gap-2">
+        {podeGerenciarMissoes && (
+          <>
+            <input
+              ref={inputSincronizarRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={(e) => {
+                const arquivo = e.target.files?.[0];
+                e.target.value = "";
+                if (arquivo) sincronizar.mutate(arquivo);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              title="Envia de volta um pacote baixado em Projetos (Exportar) — cria só o que for novo, sem duplicar o que já existe"
+              onClick={() => inputSincronizarRef.current?.click()}
+              disabled={sincronizar.isPending}
+            >
+              <Upload className="h-4 w-4" /> {sincronizar.isPending ? "Sincronizando…" : "Sincronizar do computador"}
+            </Button>
+          </>
+        )}
         <Button size="sm" variant="ghost" onClick={() => criarColuna.mutate()}>
           <Plus className="h-4 w-4" /> Nova coluna
         </Button>
@@ -155,6 +208,34 @@ export default function BoardPage() {
           </Button>
         )}
       </div>
+
+      {resultadoSync && (
+        <div
+          className={cn(
+            "mb-4 flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
+            resultadoSync.sucesso ? "border-status-approved/40 bg-status-approved/10" : "border-destructive/40 bg-destructive/10",
+          )}
+        >
+          {resultadoSync.sucesso ? (
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-status-approved" />
+          ) : (
+            <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className={resultadoSync.sucesso ? "font-medium" : "font-medium text-destructive"}>{resultadoSync.mensagem}</p>
+            {resultadoSync.avisos && resultadoSync.avisos.length > 0 && (
+              <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+                {resultadoSync.avisos.map((aviso, i) => (
+                  <li key={i}>{aviso}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button onClick={() => setResultadoSync(null)} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="flex flex-1 items-start gap-4 overflow-x-auto pb-4">

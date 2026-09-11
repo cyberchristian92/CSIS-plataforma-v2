@@ -108,6 +108,17 @@ export const api = {
     criar: (areaId: string, nome: string, descricao?: string) =>
       post<Projeto>(`/areas/${areaId}/projetos`, { nome, descricao }),
     remover: (id: string) => del<void>(`/projetos/${id}`),
+    // Reenvia um pacote baixado via exportar (e editado localmente — ver
+    // COMO_SINCRONIZAR.md dentro do próprio zip) — cria só o que é novo no
+    // projeto, nunca mexe no que já existe.
+    sincronizar: (projetoId: string, arquivoZip: File) => {
+      const form = new FormData();
+      form.append("pacote", arquivoZip);
+      return request<{ missoes_criadas: number; documentos_criados: number; arquivos_criados: number; avisos: string[] }>(
+        `/projetos/${projetoId}/sincronizar`,
+        { method: "POST", body: form },
+      );
+    },
     // Sem endpoint agregado no backend (projetos vivem só sob uma Área) —
     // agrega no cliente: workspace(s) -> áreas -> projetos de cada área.
     listarTodos: async (): Promise<Projeto[]> => {
