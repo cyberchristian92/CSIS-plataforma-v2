@@ -30,7 +30,8 @@ export class ExportacaoController {
 
   @Get('projetos/:id/exportar')
   async exportar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
-    const { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip } = await this.exportacaoService.exportarProjeto(id, user.id);
+    const { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip, documentosParaZip } =
+      await this.exportacaoService.exportarProjeto(id, user.id);
 
     const nomeZip = `projeto-${nomeArquivoSeguro(manifesto.projeto.nome)}.zip`;
     res.set({
@@ -50,6 +51,9 @@ export class ExportacaoController {
 
     for (const arquivo of arquivosParaZip) {
       archive.file(arquivo.caminhoNoDisco, { name: arquivo.caminhoNoZip });
+    }
+    for (const documento of documentosParaZip) {
+      archive.append(documento.conteudo, { name: documento.caminhoNoZip });
     }
 
     await archive.finalize();

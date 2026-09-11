@@ -18,6 +18,54 @@ interface ArquivoParaZip {
   caminhoNoZip: string;
 }
 
+interface DocumentoParaZip {
+  id: string;
+  conteudo: string;
+  caminhoNoZip: string;
+}
+
+// Neutraliza separador de caminho e "." inicial em nome de Pasta antes de
+// usá-lo como segmento de diretório dentro do zip — mesmo motivo do
+// `nomeArquivoSeguro` do controller, mas mantém acentuação (o formato ZIP
+// lida bem com UTF-8 em nome de entrada; só caracteres que quebrariam a
+// árvore de diretórios precisam ser removidos).
+function segmentoPastaSeguro(nome: string): string {
+  const limpo = nome.replace(/[\\/]/g, '_').replace(/^\.+/, '_').trim();
+  return limpo.length > 0 ? limpo : '_';
+}
+
+// Título pro nome do arquivo .md de um Documento. Documentos de laudo pronto
+// pra virar PDF (ver LaudoCompilerService) começam com front matter YAML
+// (--- ... título: ... ---) pro Eisvogel — se só olhasse a "primeira linha
+// não vazia" ingenuamente, o título viraria "---" (o delimitador), não o
+// título de verdade. Tenta achar o campo `title:` dentro do front matter
+// primeiro; sem front matter (ou sem esse campo), cai pro primeiro heading.
+function extrairTituloDocumento(conteudo: string): string {
+  const linhas = conteudo.split('\n');
+  let inicioBusca = 0;
+
+  if (linhas[0]?.trim() === '---') {
+    const fimFrontMatter = linhas.findIndex((l, i) => i > 0 && l.trim() === '---');
+    if (fimFrontMatter > 0) {
+      const linhaTitulo = linhas.slice(1, fimFrontMatter).find((l) => /^title\s*:/i.test(l.trim()));
+      if (linhaTitulo) {
+        const valor = linhaTitulo
+          .slice(linhaTitulo.indexOf(':') + 1)
+          .trim()
+          .replace(/^["']|["']$/g, '');
+        if (valor) return valor.slice(0, 60);
+      }
+      inicioBusca = fimFrontMatter + 1;
+    }
+  }
+
+  const primeiraLinha = linhas
+    .slice(inicioBusca)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return (primeiraLinha ?? '').replace(/^#+\s*/, '').slice(0, 60) || 'documento';
+}
+
 // Formato aceito em manifesto.json ao SINCRONIZAR um pacote de volta (ver
 // sincronizarLocal). São os mesmos objetos que já aparecem no manifesto
 // exportado — uma entrada "nova" é simplesmente uma cópia desse formato SEM
@@ -65,6 +113,44 @@ export class ExportacaoService {
     private readonly auditoriaService: AuditoriaService,
     private readonly eventos: EventEmitter2,
   ) {}
+
+  // Reconstrói, pra cada Pasta, o caminho relativo completo dentro da árvore
+  // do projeto (ex.: "material/sub-pasta") subindo por pasta_pai_id — sem
+  // isso, o export jogava todo arquivo/documento solto numa única pasta
+  // "arquivos/" plana, perdendo a organização real que a pessoa fez na
+  // plataforma. Desempata colisão de nome (duas pastas irmãs com o mesmo
+  // nome — o schema não impede) anexando um pedaço do id à segunda em
+  // diante, processadas em ordem estável (criado_em).
+  private resolverCaminhosPastas(pastas: { id: string; nome: string; pasta_pai_id: string | null; criado_em: Date }[]): Map<string, string> {
+    const porId = new Map(pastas.map((p) => [p.id, p]));
+    const caminhoPorId = new Map<string, string>();
+    const caminhosUsados = new Set<string>();
+
+    const resolver = (id: string, profundidade = 0): string => {
+      const jaResolvido = caminhoPorId.get(id);
+      if (jaResolvido !== undefined) return jaResolvido;
+
+      const pasta = porId.get(id);
+      if (!pasta || profundidade > 50) return ''; // proteção contra ciclo/dado corrompido
+
+      const prefixo = pasta.pasta_pai_id ? resolver(pasta.pasta_pai_id, profundidade + 1) : '';
+      let segmento = segmentoPastaSeguro(pasta.nome);
+      let caminho = prefixo ? `${prefixo}/${segmento}` : segmento;
+
+      if (caminhosUsados.has(caminho)) {
+        segmento = `${segmento}-${pasta.id.slice(0, 8)}`;
+        caminho = prefixo ? `${prefixo}/${segmento}` : segmento;
+      }
+      caminhosUsados.add(caminho);
+      caminhoPorId.set(id, caminho);
+      return caminho;
+    };
+
+    for (const pasta of [...pastas].sort((a, b) => a.criado_em.getTime() - b.criado_em.getTime())) {
+      resolver(pasta.id);
+    }
+    return caminhoPorId;
+  }
 
   async exportarProjeto(projetoId: string, solicitanteId: string) {
     const projeto = await this.prisma.projeto.findUnique({
@@ -120,13 +206,33 @@ export class ExportacaoService {
     ];
     const auditoria = await this.auditoriaService.listarPorEntidades(entidadeIds);
 
+    // Reconstrói a árvore real de pastas dentro do zip — sem isso, todo
+    // arquivo/documento caía solto numa única "arquivos/" plana, perdendo a
+    // organização feita na plataforma (ver resolverCaminhosPastas).
+    const caminhoPorPastaId = this.resolverCaminhosPastas(pastas);
+    const prefixoPasta = (pastaId: string | null) => {
+      const caminho = pastaId ? caminhoPorPastaId.get(pastaId) : undefined;
+      return caminho ? `${caminho}/` : '';
+    };
+
     const arquivosParaZip: ArquivoParaZip[] = arquivos.map((a) => ({
       id: a.id,
       nomeOriginal: a.nome,
       caminhoNoDisco: a.caminho,
-      caminhoNoZip: `arquivos/${a.id.slice(0, 8)}-${a.nome}`,
+      caminhoNoZip: `arquivos/${prefixoPasta(a.pasta_id)}${a.id.slice(0, 8)}-${segmentoPastaSeguro(a.nome)}`,
     }));
     const caminhoZipPorId = new Map(arquivosParaZip.map((a) => [a.id, a.caminhoNoZip]));
+
+    // Cada Documento também vira um arquivo .md de verdade dentro do zip
+    // (não só o texto embutido em manifesto.json) — dá pra abrir/editar
+    // fora da plataforma como arquivo comum, na mesma pasta onde ele
+    // realmente vive no projeto.
+    const documentosParaZip: DocumentoParaZip[] = documentos.map((d) => ({
+      id: d.id,
+      conteudo: d.conteudo,
+      caminhoNoZip: `documentos/${prefixoPasta(d.pasta_id)}${d.id.slice(0, 8)}-${segmentoPastaSeguro(extrairTituloDocumento(d.conteudo))}.md`,
+    }));
+    const caminhoZipDocumentoPorId = new Map(documentosParaZip.map((d) => [d.id, d.caminhoNoZip]));
 
     const manifesto = {
       gerado_em: new Date().toISOString(),
@@ -161,14 +267,25 @@ export class ExportacaoService {
           revisoes: e.revisoes.map((r) => ({ revisor: r.revisor, status: r.status, comentario: r.comentario, criado_em: r.criado_em })),
         })),
       })),
+      // Pasta física real do projeto — cada uma referencia o próprio "caminho"
+      // (mesmo valor usado dentro de arquivos/ e documentos/ no zip) pra dar
+      // pra reconstruir a árvore inteira sem adivinhar nada.
+      pastas: pastas.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        pasta_pai_id: p.pasta_pai_id,
+        caminho: caminhoPorPastaId.get(p.id) ?? null,
+      })),
       documentos: documentos.map((d) => ({
         id: d.id,
         autor: d.autor,
         conteudo: d.conteudo,
         tags: d.tags,
         missao_id: d.missao_id,
+        pasta_id: d.pasta_id,
         criado_em: d.criado_em,
         atualizado_em: d.atualizado_em,
+        caminho_no_pacote: caminhoZipDocumentoPorId.get(d.id),
       })),
       arquivos: arquivos.map((a) => ({
         id: a.id,
@@ -177,6 +294,7 @@ export class ExportacaoService {
         tamanho: a.tamanho,
         tipo_mime: a.tipo_mime,
         missao_id: a.missao_id,
+        pasta_id: a.pasta_id,
         enviado_por: mapaUsuarios.get(a.enviado_por) ?? { id: a.enviado_por },
         enviado_em: a.enviado_em,
         caminho_no_pacote: caminhoZipPorId.get(a.id),
@@ -204,7 +322,7 @@ export class ExportacaoService {
 
     const guiaSincronizacaoMd = this.gerarGuiaSincronizacao();
 
-    return { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip };
+    return { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip, documentosParaZip };
   }
 
   // Explica, dentro do próprio pacote, como usar este mesmo manifesto.json
@@ -323,20 +441,30 @@ export class ExportacaoService {
       }
     }
 
+    const caminhoPastaPorId = new Map<string, string>((m.pastas ?? []).map((p: { id: string; caminho: string | null }) => [p.id, p.caminho ?? '']));
+    const localDe = (pastaId: string | null) => (pastaId ? (caminhoPastaPorId.get(pastaId) ?? '—') : 'Raiz');
+
+    if (m.pastas?.length) {
+      linhas.push('');
+      linhas.push(`## Pastas (${m.pastas.length})`);
+      for (const p of m.pastas as { nome: string; caminho: string | null }[]) {
+        linhas.push(`- ${p.caminho ?? p.nome}`);
+      }
+    }
+
     linhas.push('');
     linhas.push(`## Documentos (${m.documentos.length})`);
     for (const doc of m.documentos) {
-      const primeiraLinha = (doc.conteudo as string).split('\n')[0].replace(/#/g, '').trim();
-      linhas.push(`- **${primeiraLinha || 'Documento sem título'}** — autor: ${doc.autor.nome}, criado em ${fmt(doc.criado_em)}${doc.tags?.length ? `, tags: ${doc.tags.join(', ')}` : ''}`);
+      linhas.push(`- **${extrairTituloDocumento(doc.conteudo)}** — pasta: ${localDe(doc.pasta_id)}, autor: ${doc.autor.nome}, criado em ${fmt(doc.criado_em)}${doc.tags?.length ? `, tags: ${doc.tags.join(', ')}` : ''}`);
     }
 
     linhas.push('');
     linhas.push(`## Arquivos (${m.arquivos.length})`);
     linhas.push('');
-    linhas.push('| Nome | Hash SHA-256 | Tamanho (bytes) | Enviado por | Enviado em |');
-    linhas.push('| --- | --- | --- | --- | --- |');
+    linhas.push('| Nome | Pasta | Hash SHA-256 | Tamanho (bytes) | Enviado por | Enviado em |');
+    linhas.push('| --- | --- | --- | --- | --- | --- |');
     for (const a of m.arquivos) {
-      linhas.push(`| ${a.nome} | \`${a.hash_sha256}\` | ${a.tamanho} | ${a.enviado_por?.nome ?? '—'} | ${fmt(a.enviado_em)} |`);
+      linhas.push(`| ${a.nome} | ${localDe(a.pasta_id)} | \`${a.hash_sha256}\` | ${a.tamanho} | ${a.enviado_por?.nome ?? '—'} | ${fmt(a.enviado_em)} |`);
     }
 
     linhas.push('');
