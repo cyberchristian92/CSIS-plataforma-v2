@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CopyButton } from "@/components/ui/copy-button";
 import { formatDate } from "@/lib/utils";
 
 export default function ProjectOverviewPage() {
@@ -51,8 +53,10 @@ export default function ProjectOverviewPage() {
       <Card>
         <CardContent className="flex flex-col gap-3 p-5">
           <div>
-            <p className="text-xs text-muted-foreground">Status</p>
-            <p className="font-medium text-primary">{projeto.status}</p>
+            <p className="mb-1 text-xs text-muted-foreground">Status</p>
+            <Badge variant={projeto.status === "ATIVO" ? "default" : projeto.status === "CONCLUIDO" ? "secondary" : "outline"}>
+              {projeto.status}
+            </Badge>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Prazo</p>
@@ -82,9 +86,14 @@ export default function ProjectOverviewPage() {
             Hash agregado (CID) de todo o conteúdo deste projeto — pastas, arquivos, documentos e missões. Muda
             automaticamente a qualquer alteração; qualquer adulteração fora da plataforma quebraria essa cadeia.
           </p>
-          <p className="mt-2 break-all font-mono text-xs text-foreground">
-            {integridade?.ipfs_cid ?? "Ainda não calculado — clique em Recalcular."}
-          </p>
+          {integridade?.ipfs_cid ? (
+            <div className="mt-2 flex items-start gap-1.5">
+              <p className="break-all font-mono text-xs text-foreground">{integridade.ipfs_cid}</p>
+              <CopyButton value={integridade.ipfs_cid} />
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">Ainda não calculado — clique em Recalcular.</p>
+          )}
         </CardContent>
       </Card>
     </div>

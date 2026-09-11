@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Download, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Download, Folder, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 
@@ -93,11 +94,19 @@ export default function ProjectsPage() {
             {ativos.map((p) => (
               <tr key={p.id} className="hover:bg-accent/50">
                 <td className="px-4 py-3">
-                  <Link to={`/projetos/${p.id}`} className="font-medium text-foreground hover:text-primary">
+                  <Link
+                    to={`/projetos/${p.id}`}
+                    className="group flex items-center gap-2 font-medium text-foreground hover:text-primary"
+                  >
+                    <Folder className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" />
                     {p.nome}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-primary">{STATUS_LABEL[p.status]}</td>
+                <td className="px-4 py-3">
+                  <Badge variant={p.status === "ATIVO" ? "default" : p.status === "CONCLUIDO" ? "secondary" : "outline"}>
+                    {STATUS_LABEL[p.status]}
+                  </Badge>
+                </td>
                 <td className="px-4 py-3 text-muted-foreground">{p.prazo ? formatDate(p.prazo) : "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{missoesPorProjeto?.[p.id] ?? 0} mis.</td>
                 <td className="px-4 py-3 text-right">
