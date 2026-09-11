@@ -20,25 +20,27 @@ export function AppShell() {
               className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
-          <button
-            onClick={toggle}
-            title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </button>
-          <button className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
-            <Bell className="h-5 w-5" />
-          </button>
-          {user?.papel_global === "ADMIN" && (
-            <Link
-              to="/configuracoes"
-              title="Configurações"
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <button
+              onClick={toggle}
+              title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
               className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              <Settings className="h-5 w-5" />
-            </Link>
-          )}
+              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            <button className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+              <Bell className="h-5 w-5" />
+            </button>
+            {user?.papel_global === "ADMIN" && (
+              <Link
+                to="/configuracoes"
+                title="Configurações"
+                className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Settings className="h-5 w-5" />
+              </Link>
+            )}
+          </div>
         </header>
         <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />
