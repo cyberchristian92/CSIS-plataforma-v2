@@ -14,9 +14,9 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar, Check, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
+import { Calendar, Check, ChevronDown, Filter, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Coluna, Missao } from "@/lib/types";
+import type { Coluna, Missao, MissaoLabel, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,120 @@ import { MissionDialog } from "@/components/MissionDialog";
 // lugar da interface, validadas no servidor (ver backend/prisma/schema.prisma
 // e o Cap. 4 do TCC sobre segregação de funções).
 
+function FiltroBoard({
+  busca,
+  onBuscaChange,
+  labelsDisponiveis,
+  labelsSelecionadas,
+  onLabelsChange,
+  responsaveisDisponiveis,
+  responsaveisSelecionados,
+  onResponsaveisChange,
+  onLimpar,
+}: {
+  busca: string;
+  onBuscaChange: (v: string) => void;
+  labelsDisponiveis: MissaoLabel[];
+  labelsSelecionadas: string[];
+  onLabelsChange: (ids: string[]) => void;
+  responsaveisDisponiveis: User[];
+  responsaveisSelecionados: string[];
+  onResponsaveisChange: (ids: string[]) => void;
+  onLimpar: () => void;
+}) {
+  const totalAtivos = (busca.trim() ? 1 : 0) + labelsSelecionadas.length + responsaveisSelecionados.length;
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <Input
+        value={busca}
+        onChange={(e) => onBuscaChange(e.target.value)}
+        placeholder="Buscar missão…"
+        className="h-8 max-w-[220px]"
+      />
+      <FiltroDropdown
+        rotulo="Labels"
+        opcoes={labelsDisponiveis.map((l) => ({ id: l.id, nome: l.nome, cor: l.cor }))}
+        selecionados={labelsSelecionadas}
+        onChange={onLabelsChange}
+      />
+      <FiltroDropdown
+        rotulo="Responsável"
+        opcoes={responsaveisDisponiveis.map((u) => ({ id: u.id, nome: u.nome }))}
+        selecionados={responsaveisSelecionados}
+        onChange={onResponsaveisChange}
+      />
+      {totalAtivos > 0 && (
+        <button onClick={onLimpar} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <X className="h-3 w-3" /> Limpar filtros ({totalAtivos})
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FiltroDropdown({
+  rotulo,
+  opcoes,
+  selecionados,
+  onChange,
+}: {
+  rotulo: string;
+  opcoes: { id: string; nome: string; cor?: string }[];
+  selecionados: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onClickFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    }
+    document.addEventListener("mousedown", onClickFora);
+    return () => document.removeEventListener("mousedown", onClickFora);
+  }, [aberto]);
+
+  function alternar(id: string) {
+    onChange(selecionados.includes(id) ? selecionados.filter((s) => s !== id) : [...selecionados, id]);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <Button size="sm" variant={selecionados.length > 0 ? "secondary" : "ghost"} onClick={() => setAberto((v) => !v)}>
+        <Filter className="h-3.5 w-3.5" />
+        {rotulo}
+        {selecionados.length > 0 && <Badge variant="outline" className="px-1 py-0 text-[10px]">{selecionados.length}</Badge>}
+        <ChevronDown className="h-3 w-3" />
+      </Button>
+      {aberto && (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+          {opcoes.length === 0 ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">Nada disponível.</p>
+          ) : (
+            opcoes.map((op) => (
+              <label
+                key={op.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+              >
+                <input
+                  type="checkbox"
+                  checked={selecionados.includes(op.id)}
+                  onChange={() => alternar(op.id)}
+                  className="h-3.5 w-3.5"
+                />
+                {op.cor && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: op.cor }} />}
+                <span className="truncate">{op.nome}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BoardPage() {
   const { projetoId = "" } = useParams();
   const qc = useQueryClient();
@@ -50,6 +164,9 @@ export default function BoardPage() {
     mensagem: string;
     avisos?: string[];
   } | null>(null);
+  const [busca, setBusca] = useState("");
+  const [labelsFiltro, setLabelsFiltro] = useState<string[]>([]);
+  const [responsaveisFiltro, setResponsaveisFiltro] = useState<string[]>([]);
 
   const { data: colunas } = useQuery({
     queryKey: ["colunas", projetoId],
@@ -61,6 +178,33 @@ export default function BoardPage() {
     queryKey: ["missoes", projetoId],
     queryFn: () => api.missoes.listarPorProjeto(projetoId),
     enabled: !!projetoId,
+  });
+
+  const { data: labelsProjeto } = useQuery({
+    queryKey: ["missao-labels", projetoId],
+    queryFn: () => api.missaoLabels.listarPorProjeto(projetoId),
+    enabled: !!projetoId,
+  });
+
+  const responsaveisDisponiveis: User[] = [];
+  const vistos = new Set<string>();
+  for (const m of missoes ?? []) {
+    for (const r of m.responsaveis ?? []) {
+      if (!vistos.has(r.user.id)) {
+        vistos.add(r.user.id);
+        responsaveisDisponiveis.push(r.user);
+      }
+    }
+  }
+  responsaveisDisponiveis.sort((a, b) => a.nome.localeCompare(b.nome));
+
+  const filtroAtivo = busca.trim().length > 0 || labelsFiltro.length > 0 || responsaveisFiltro.length > 0;
+  const buscaNormalizada = busca.trim().toLowerCase();
+  const missoesFiltradas = (missoes ?? []).filter((m) => {
+    if (buscaNormalizada && !m.titulo.toLowerCase().includes(buscaNormalizada)) return false;
+    if (labelsFiltro.length > 0 && !m.labels?.some((l) => labelsFiltro.includes(l.label.id))) return false;
+    if (responsaveisFiltro.length > 0 && !m.responsaveis?.some((r) => responsaveisFiltro.includes(r.user.id))) return false;
+    return true;
   });
 
   const mover = useMutation({
@@ -170,11 +314,27 @@ export default function BoardPage() {
     mover.mutate({ id: missao.id, colunaId: destinoColunaId, ordem: novaOrdem });
   }
 
-  const semColuna = missoes?.filter((m) => !m.coluna_id) ?? [];
+  const semColuna = missoesFiltradas.filter((m) => !m.coluna_id);
 
   return (
     <div className="flex h-full flex-col p-6">
-      <div className="mb-4 flex items-center justify-end gap-2">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <FiltroBoard
+          busca={busca}
+          onBuscaChange={setBusca}
+          labelsDisponiveis={labelsProjeto ?? []}
+          labelsSelecionadas={labelsFiltro}
+          onLabelsChange={setLabelsFiltro}
+          responsaveisDisponiveis={responsaveisDisponiveis}
+          responsaveisSelecionados={responsaveisFiltro}
+          onResponsaveisChange={setResponsaveisFiltro}
+          onLimpar={() => {
+            setBusca("");
+            setLabelsFiltro([]);
+            setResponsaveisFiltro([]);
+          }}
+        />
+        <div className="flex shrink-0 items-center gap-2">
         {podeGerenciarMissoes && (
           <>
             <input
@@ -207,7 +367,12 @@ export default function BoardPage() {
             <Plus className="h-4 w-4" /> Nova Missão
           </Button>
         )}
+        </div>
       </div>
+
+      {filtroAtivo && missoesFiltradas.length === 0 && (missoes?.length ?? 0) > 0 && (
+        <p className="mb-4 text-sm text-muted-foreground">Nenhuma missão corresponde ao filtro atual.</p>
+      )}
 
       {resultadoSync && (
         <div
@@ -243,7 +408,7 @@ export default function BoardPage() {
             <ColunaColumn
               key={coluna.id}
               coluna={coluna}
-              missoes={(missoes ?? []).filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
+              missoes={missoesFiltradas.filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
               onNovaMissao={podeGerenciarMissoes ? () => criarMissao.mutate(coluna.id) : undefined}
               onEditar={() => setColunaEditando(coluna)}
               onAbrirMissao={setMissaoAberta}
