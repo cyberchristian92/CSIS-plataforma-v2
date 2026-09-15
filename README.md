@@ -6,8 +6,9 @@ entrega a passar por revisão técnica antes de virar resultado final, e garante
 arquivo ou documento anexado ao caso não pode ser adulterado sem deixar rastro — sem depender de
 confiar na palavra de quem mexeu nele.
 
-É auto-hospedada: cada empresa sobe a própria instância, com os próprios dados, nome e logo —
-não existe uma conta compartilhada num serviço de terceiro guardando o caso de ninguém.
+É código aberto (AGPL-3.0) e auto-hospedada: cada empresa sobe a própria instância, com os
+próprios dados, nome e logo — não existe uma conta compartilhada num serviço de terceiro
+guardando o caso de ninguém.
 
 ## O que a plataforma resolve
 
@@ -188,3 +189,10 @@ csis-platform-v2/
   nome e logo (ver Configurações, admin) — sem depender de conta num serviço de terceiro.
 
 Lista completa de decisões e o porquê de cada uma: [`docs/adr/`](docs/adr/).
+
+## Licença
+
+[AGPL-3.0](LICENSE). Resumo: pode usar, estudar, modificar e auto-hospedar livremente. Se você
+modificar o código e oferecê-lo como serviço hospedado para terceiros, é obrigado a disponibilizar
+o código-fonte das suas modificações sob a mesma licença — a cláusula de uso em rede da AGPL existe
+justamente para isso, diferente da GPL comum.
