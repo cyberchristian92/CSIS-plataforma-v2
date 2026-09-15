@@ -42,6 +42,8 @@ export interface Projeto {
   ipfs_cid: string | null;
   restrito: boolean;
   criado_por_id: string | null;
+  capa_url: string | null;
+  video_url: string | null;
 }
 
 export type MissaoStatus = "PENDENTE" | "EM_ANDAMENTO" | "EM_REVISAO" | "APROVADA" | "REJEITADA";

@@ -107,6 +107,8 @@ export const api = {
     buscar: (id: string) => get<Projeto>(`/projetos/${id}`),
     criar: (areaId: string, nome: string, descricao?: string) =>
       post<Projeto>(`/areas/${areaId}/projetos`, { nome, descricao }),
+    atualizar: (id: string, dto: { capa_url?: string | null; video_url?: string | null }) =>
+      patch<Projeto>(`/projetos/${id}`, dto),
     remover: (id: string) => del<void>(`/projetos/${id}`),
     // Reenvia um pacote baixado via exportar (e editado localmente — ver
     // COMO_SINCRONIZAR.md dentro do próprio zip) — cria só o que é novo no

@@ -91,6 +91,8 @@ export class ProjetosService {
         descricao: dto.descricao,
         status: dto.status,
         prazo: dto.prazo ? new Date(dto.prazo) : undefined,
+        capa_url: dto.capa_url,
+        video_url: dto.video_url,
       },
     });
     await this.auditoriaService.registrar(userId, 'ATUALIZAR', 'Projeto', id, anterior, atualizado);

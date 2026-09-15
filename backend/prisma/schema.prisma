@@ -109,6 +109,12 @@ model Projeto {
   prazo     DateTime?
   ipfs_cid  String? // CID do diretório do Projeto na árvore IPFS
 
+  // Resumo visual do projeto na Visão Geral (estilo capa/embed do Notion).
+  // capa_url é data URI (base64), mesmo padrão de Workspace.logo_data_url —
+  // sem depender de um serviço de storage de arquivo separado só pra isso.
+  capa_url  String? @db.Text
+  video_url String? // link do YouTube (watch?v=... ou youtu.be/...), convertido pro formato de embed no frontend
+
   // Listas de Acesso (ver model Lista) — por padrão (`restrito = false`) o
   // Projeto é visível para qualquer usuário autenticado, igual sempre foi;
   // `restrito = true` faz a visibilidade depender de AcessoRecurso (Listas

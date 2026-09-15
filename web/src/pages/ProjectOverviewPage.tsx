@@ -1,19 +1,27 @@
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { ImagePlus, Pencil, RefreshCw, ShieldCheck, Trash2, Video } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { resizeImageToDataUrl } from "@/lib/image-resize";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
-import { formatDate } from "@/lib/utils";
+import { formatDate, youtubeEmbedUrl } from "@/lib/utils";
 
 export default function ProjectOverviewPage() {
   const { projetoId = "" } = useParams();
   const { user } = useAuth();
   const qc = useQueryClient();
   const podeRecalcular = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
+  const podeEditarResumo = podeRecalcular;
+  const inputCapaRef = useRef<HTMLInputElement>(null);
+  const [editandoVideo, setEditandoVideo] = useState(false);
+  const [videoUrlInput, setVideoUrlInput] = useState("");
+  const [erroResumo, setErroResumo] = useState<string | null>(null);
 
   const { data: projeto } = useQuery({
     queryKey: ["projeto", projetoId],
@@ -40,10 +48,177 @@ export default function ProjectOverviewPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["integridade"] }),
   });
 
+  const atualizarResumo = useMutation({
+    mutationFn: (dto: { capa_url?: string | null; video_url?: string | null }) => api.projetos.atualizar(projetoId, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projeto", projetoId] });
+      setEditandoVideo(false);
+      setErroResumo(null);
+    },
+    onError: (e: unknown) => setErroResumo(e instanceof Error ? e.message : "Falha ao salvar."),
+  });
+
+  async function onSelecionarCapa(file: File) {
+    try {
+      // Capa é um banner largo (não um ícone quadrado) — maxSize maior que o
+      // usado pra logo, senão a imagem sai borrada esticada na largura toda.
+      const dataUrl = await resizeImageToDataUrl(file, 1600);
+      atualizarResumo.mutate({ capa_url: dataUrl });
+    } catch (e) {
+      setErroResumo(e instanceof Error ? e.message : "Falha ao processar a imagem.");
+    }
+  }
+
+  function salvarVideo() {
+    const url = videoUrlInput.trim();
+    if (!url) return;
+    if (!youtubeEmbedUrl(url)) {
+      setErroResumo("Isso não parece um link do YouTube (watch?v=, youtu.be/ ou shorts/).");
+      return;
+    }
+    atualizarResumo.mutate({ video_url: url });
+  }
+
   if (!projeto) return null;
 
+  const embedUrl = projeto.video_url ? youtubeEmbedUrl(projeto.video_url) : null;
+
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-3">
+    <div className="flex flex-col gap-4 p-6">
+      <input
+        ref={inputCapaRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) onSelecionarCapa(file);
+        }}
+      />
+
+      {/* Capa — estilo capa do Notion: banner no topo da página. Sem capa
+          definida, só aparece pra quem pode editar (convite discreto pra
+          adicionar uma), nunca uma faixa vazia pra quem só visualiza. */}
+      {projeto.capa_url ? (
+        <div className="group relative h-40 w-full overflow-hidden rounded-lg sm:h-52">
+          <img src={projeto.capa_url} alt="" className="h-full w-full object-cover" />
+          {podeEditarResumo && (
+            <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <Button size="sm" variant="outline" onClick={() => inputCapaRef.current?.click()} disabled={atualizarResumo.isPending}>
+                <ImagePlus className="h-3.5 w-3.5" /> Trocar capa
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => atualizarResumo.mutate({ capa_url: null })} disabled={atualizarResumo.isPending}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        podeEditarResumo && (
+          <button
+            onClick={() => inputCapaRef.current?.click()}
+            disabled={atualizarResumo.isPending}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground"
+          >
+            <ImagePlus className="h-4 w-4" /> Adicionar capa
+          </button>
+        )
+      )}
+
+      {erroResumo && <p className="text-xs text-destructive">{erroResumo}</p>}
+
+      {/* Vídeo embutido — resumo do projeto em vídeo, estilo embed do Notion. */}
+      {embedUrl ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <Video className="h-4 w-4 text-primary" /> Vídeo
+              </h2>
+              {podeEditarResumo && (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => {
+                      setVideoUrlInput(projeto.video_url ?? "");
+                      setEditandoVideo(true);
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Trocar vídeo"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => atualizarResumo.mutate({ video_url: null })}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remover vídeo"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+            {editandoVideo ? (
+              <div className="flex gap-2">
+                <Input
+                  value={videoUrlInput}
+                  onChange={(e) => setVideoUrlInput(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=..."
+                  autoFocus
+                />
+                <Button size="sm" onClick={salvarVideo} disabled={atualizarResumo.isPending}>
+                  Salvar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditandoVideo(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <div className="aspect-video w-full overflow-hidden rounded-md">
+                <iframe
+                  src={embedUrl}
+                  title="Vídeo do projeto"
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        podeEditarResumo &&
+        (editandoVideo ? (
+          <Card>
+            <CardContent className="flex gap-2 p-5">
+              <Input
+                value={videoUrlInput}
+                onChange={(e) => setVideoUrlInput(e.target.value)}
+                placeholder="https://youtube.com/watch?v=..."
+                autoFocus
+              />
+              <Button size="sm" onClick={salvarVideo} disabled={atualizarResumo.isPending}>
+                Salvar
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditandoVideo(false)}>
+                Cancelar
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <button
+            onClick={() => {
+              setVideoUrlInput("");
+              setEditandoVideo(true);
+            }}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground"
+          >
+            <Video className="h-4 w-4" /> Adicionar vídeo do YouTube
+          </button>
+        ))
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Card className="md:col-span-2">
         <CardContent className="p-5">
           <h2 className="mb-3 text-base font-semibold">Descrição</h2>
@@ -96,6 +271,7 @@ export default function ProjectOverviewPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
