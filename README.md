@@ -5,10 +5,6 @@ Projetos/Missões, fluxo de Entrega → Revisão com Segregação de Funções, 
 arquivos/documentos com hash de integridade (Merkle Tree) e laudo em PDF gerado a partir de
 Markdown.
 
-Evolução pós-defesa da Plataforma CSIS original (TCC, Flutter Web). Este repositório é
-**paralelo e independente** do `csis-platform` original — aquele é o artefato acadêmico
-defendido e não é tocado a partir daqui.
-
 ## Colocar no ar em 5 minutos (Docker)
 
 Pré-requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e
