@@ -88,3 +88,16 @@ export async function criarHierarquia(ctx: Contexto, criadoPorId?: string) {
   });
   return { workspace, area, projeto };
 }
+
+/// Aloca o usuário no projeto do jeito mais comum na prática: como
+/// responsável por uma missão. Colaborador só enxerga projeto onde está
+/// alocado (ver visibilidade.e2e-spec.ts).
+export async function alocar(ctx: Contexto, projetoId: string, userId: string) {
+  return ctx.prisma.missao.create({
+    data: {
+      projeto_id: projetoId,
+      titulo: `Alocação ${userId.slice(0, 8)}`,
+      responsaveis: { create: { user_id: userId } },
+    },
+  });
+}

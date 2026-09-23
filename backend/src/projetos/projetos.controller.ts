@@ -40,11 +40,7 @@ export class ProjetosController {
     @Param('areaId') areaId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.projetosService.listarPorArea(
-      areaId,
-      user.id,
-      user.papel_global,
-    );
+    return this.projetosService.listarPorArea(areaId, user);
   }
 
   @Get('projetos/:id')

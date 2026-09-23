@@ -91,6 +91,10 @@ model Area {
   tipo          String // ex: PERICIA, MARKETING, CURSOS
   ipfs_cid      String? // CID do diretório da Área na árvore IPFS
   restrito      Boolean @default(false)
+  // Público: qualquer usuário ativo vê a Área e os materiais dela (pastas,
+  // arquivos, documentos) — ex.: trilha aberta para alunos. NÃO abre os
+  // Projetos da área, que têm a própria visibilidade.
+  publico       Boolean @default(false)
   criado_por_id String?
 
   workspace  Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
@@ -128,6 +132,10 @@ model Projeto {
   // ou usuários específicos), além de ADMIN e de quem criou o projeto, que
   // sempre têm acesso.
   restrito      Boolean @default(false)
+  // Visibilidade padrão é restrita para Colaboradores: só veem o projeto se
+  // estiverem alocados (responsáveis por alguma missão), incluídos no
+  // compartilhamento, se o criaram — ou se ele for marcado público.
+  publico       Boolean @default(false)
   criado_por_id String?
 
   area          Area            @relation(fields: [area_id], references: [id], onDelete: Cascade)

@@ -61,18 +61,12 @@ export class ProjetosService {
     return projeto;
   }
 
-  async listarPorArea(areaId: string, userId: string, papel: Papel) {
+  async listarPorArea(areaId: string, user: AuthenticatedUser) {
     const projetos = await this.prisma.projeto.findMany({
       where: { area_id: areaId },
       orderBy: { nome: 'asc' },
     });
-    const visiveis = await this.acessoService.idsVisiveis(
-      'projeto',
-      projetos,
-      userId,
-      papel,
-    );
-    return projetos.filter((p) => visiveis.has(p.id));
+    return this.escopoService.filtrarProjetos(user, projetos);
   }
 
   async buscar(id: string, user?: AuthenticatedUser) {
@@ -129,6 +123,7 @@ export class ProjetosService {
         prazo: dto.prazo ? new Date(dto.prazo) : undefined,
         capa_url: dto.capa_url,
         video_url: dto.video_url,
+        publico: dto.publico,
       },
     });
     await this.auditoriaService.registrar(

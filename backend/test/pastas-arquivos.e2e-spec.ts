@@ -6,6 +6,7 @@ import {
   criarHierarquia,
   criarUsuarioLogado,
   encerrar,
+  alocar,
 } from './helpers';
 
 async function lerManifesto(zip: Buffer): Promise<Record<string, unknown>> {
@@ -147,6 +148,7 @@ describe('Pastas, arquivos e exportação', () => {
     const dono = await criarUsuarioLogado(ctx, 'COLABORADOR');
     const colega = await criarUsuarioLogado(ctx, 'COLABORADOR');
     const { projeto } = await criarHierarquia(ctx, dono.user.id);
+    await alocar(ctx, projeto.id, colega.user.id);
     const res = await dono.agente
       .post(`/projetos/${projeto.id}/arquivos`)
       .attach('arquivo', Buffer.from('evidência'), 'e.txt')
@@ -159,6 +161,7 @@ describe('Pastas, arquivos e exportação', () => {
     const autor = await criarUsuarioLogado(ctx, 'COLABORADOR');
     const colega = await criarUsuarioLogado(ctx, 'COLABORADOR');
     const { projeto } = await criarHierarquia(ctx, autor.user.id);
+    await alocar(ctx, projeto.id, colega.user.id);
     const doc = await autor.agente
       .post(`/projetos/${projeto.id}/documentos`)
       .send({ conteudo: '# laudo' })

@@ -1,5 +1,14 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsIn, IsOptional, IsString, IsUrl, MaxLength, Matches, ValidateIf } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  Matches,
+  ValidateIf,
+} from 'class-validator';
 import { CreateProjetoDto } from './create-projeto.dto';
 
 export const STATUS_PROJETO = ['ATIVO', 'ARQUIVADO', 'CONCLUIDO'] as const;
@@ -23,6 +32,12 @@ export class UpdateProjetoDto extends PartialType(CreateProjetoDto) {
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsUrl({}, { message: 'video_url precisa ser uma URL válida.' })
-  @Matches(/(youtube\.com|youtu\.be)/, { message: 'video_url precisa ser um link do YouTube.' })
+  @Matches(/(youtube\.com|youtu\.be)/, {
+    message: 'video_url precisa ser um link do YouTube.',
+  })
   video_url?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  publico?: boolean;
 }
