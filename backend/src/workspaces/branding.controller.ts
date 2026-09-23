@@ -10,8 +10,12 @@ export class BrandingController {
 
   @Get()
   async obter() {
+    // Mesmo critério de nomeDaInstancia() (common/marca.ts), usado nos e-mails.
     const workspaces = await this.workspacesService.listar();
     const atual = workspaces[0];
-    return { nome: atual?.nome ?? null, logo_data_url: atual?.logo_data_url ?? null };
+    return {
+      nome: atual?.nome ?? null,
+      logo_data_url: atual?.logo_data_url ?? null,
+    };
   }
 }

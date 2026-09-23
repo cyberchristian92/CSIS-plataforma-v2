@@ -17,6 +17,11 @@ import type {
   TipoRecursoRestringivel,
   User,
   Workspace,
+  ResultadoConvite,
+  FormularioInscricao,
+  CampoInscricao,
+  DadosCampoInscricao,
+  Inscricao,
 } from "./types";
 
 // A API roda atrás de cookie HttpOnly (ver backend/src/auth/auth.controller.ts) —
@@ -43,7 +48,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new ApiError(res.status, body.message ?? res.statusText);
+    // A validação do servidor pode devolver uma lista de mensagens.
+    const mensagem = Array.isArray(body.message) ? body.message.join(" ") : body.message;
+    throw new ApiError(res.status, mensagem ?? res.statusText);
   }
 
   if (res.status === 204) return undefined as T;
@@ -67,8 +74,16 @@ export const api = {
     listarUsuarios: () => get<User[]>("/auth/usuarios"),
     atualizarPapel: (id: string, papelGlobal: User["papel_global"]) =>
       patch<User>(`/auth/usuarios/${id}/papel`, { papelGlobal }),
-    registrar: (nome: string, email: string, senha: string, papelGlobal?: User["papel_global"]) =>
-      post<User>("/auth/register", { nome, email, senha, papelGlobal }),
+    // Convite: a pessoa cria a própria senha pelo link. Sem SMTP configurado
+    // o servidor devolve o link para ser copiado e enviado por outro canal.
+    convidar: (nome: string, email: string, papelGlobal: User["papel_global"]) =>
+      post<ResultadoConvite>("/auth/convites", { nome, email, papelGlobal }),
+    reenviarConvite: (id: string) => post<ResultadoConvite>(`/auth/convites/${id}/reenviar`),
+    previaConvite: (token: string) =>
+      get<{ nome: string; email: string; papel_global: User["papel_global"] }>(`/auth/convites/${encodeURIComponent(token)}`),
+    aceitarConvite: (token: string, senha: string) => post<User>("/auth/convites/aceitar", { token, senha }),
+    confirmarEmail: (token: string) => post<{ ok: boolean }>("/auth/confirmar-email", { token }),
+    definirAtivo: (id: string, ativo: boolean) => patch<User>(`/auth/usuarios/${id}/ativo`, { ativo }),
     esqueciSenha: (email: string) => post<{ ok: boolean }>("/auth/esqueci-senha", { email }),
     redefinirSenha: (token: string, novaSenha: string) =>
       post<{ ok: boolean }>("/auth/redefinir-senha", { token, novaSenha }),
@@ -100,6 +115,7 @@ export const api = {
       return areasPorWorkspace.flat();
     },
     remover: (id: string) => del<void>(`/areas/${id}`),
+    atualizar: (id: string, dto: { nome?: string; publico?: boolean }) => patch<Area>(`/areas/${id}`, dto),
   },
 
   projetos: {
@@ -107,7 +123,7 @@ export const api = {
     buscar: (id: string) => get<Projeto>(`/projetos/${id}`),
     criar: (areaId: string, nome: string, descricao?: string) =>
       post<Projeto>(`/areas/${areaId}/projetos`, { nome, descricao }),
-    atualizar: (id: string, dto: { capa_url?: string | null; video_url?: string | null }) =>
+    atualizar: (id: string, dto: { capa_url?: string | null; video_url?: string | null; publico?: boolean }) =>
       patch<Projeto>(`/projetos/${id}`, dto),
     remover: (id: string) => del<void>(`/projetos/${id}`),
     // Reenvia um pacote baixado via exportar (e editado localmente — ver
@@ -246,11 +262,15 @@ export const api = {
         body: form,
       });
     },
-    verificarIntegridade: (id: string) => get<{ integro: boolean; hash_original: string; hash_atual: string }>(
+    verificarIntegridade: (id: string) =>
+      get<{ integro: boolean; ausente: boolean; hash_original: string; hash_atual: string | null }>(
       `/arquivos/${id}/verificar`,
     ),
     renomear: (id: string, nome: string) => patch<Arquivo>(`/arquivos/${id}`, { nome }),
     remover: (id: string) => del<void>(`/arquivos/${id}`),
+    // Link direto (o cookie de sessão vai junto); o servidor confere o hash
+    // antes de entregar e recusa arquivo adulterado.
+    urlDownload: (id: string) => `${BASE}/arquivos/${id}/download`,
   },
 
   listas: {
@@ -264,7 +284,7 @@ export const api = {
 
   compartilhamento: {
     obter: (tipo: TipoRecursoRestringivel, id: string) => get<Compartilhamento>(`/compartilhamento/${tipo}/${id}`),
-    definir: (tipo: TipoRecursoRestringivel, id: string, dto: { restrito: boolean; listaIds: string[]; userIds: string[] }) =>
+    definir: (tipo: TipoRecursoRestringivel, id: string, dto: { restrito: boolean; publico?: boolean; listaIds: string[]; userIds: string[] }) =>
       put<Compartilhamento>(`/compartilhamento/${tipo}/${id}`, dto),
   },
 
@@ -305,5 +325,24 @@ export const api = {
     // O PDF é servido como binário (sendFile), não JSON — a URL em si é o
     // que interessa (usada num <a>/<iframe>), não uma chamada via fetch.
     pdfUrl: (documentoId: string) => `${BASE}/documentos/${documentoId}/laudo/pdf`,
+  },
+
+  // Cadastro público: formulário (público) e configuração (equipe).
+  inscricao: {
+    formulario: () => get<FormularioInscricao>("/inscricao/formulario"),
+    inscrever: (dados: FormData) => request<{ ok: boolean; mensagem: string }>("/inscricao", { method: "POST", body: dados }),
+    listarCampos: (arquivados = false) => get<CampoInscricao[]>(`/inscricao/campos?arquivados=${arquivados}`),
+    criarCampo: (dto: DadosCampoInscricao) => post<CampoInscricao>("/inscricao/campos", dto),
+    atualizarCampo: (id: string, dto: Partial<DadosCampoInscricao>) => patch<CampoInscricao>(`/inscricao/campos/${id}`, dto),
+    arquivarCampo: (id: string) => del<{ ok: boolean }>(`/inscricao/campos/${id}`),
+    ordenarCampos: (ids: string[]) => put<CampoInscricao[]>("/inscricao/campos/ordem", { ids }),
+  },
+
+  inscricoes: {
+    listar: (situacao?: string) => get<Inscricao[]>(`/inscricoes${situacao ? `?situacao=${situacao}` : ""}`),
+    aprovar: (id: string, papelGlobal: User["papel_global"], observacao?: string) =>
+      post<{ ok: boolean }>(`/inscricoes/${id}/aprovar`, { papelGlobal, observacao }),
+    recusar: (id: string, observacao?: string) => post<{ ok: boolean }>(`/inscricoes/${id}/recusar`, { observacao }),
+    urlAnexo: (id: string, anexoId: string) => `${BASE}/inscricoes/${id}/anexos/${anexoId}`,
   },
 };

@@ -470,7 +470,7 @@ export class ExportacaoService {
     return [
       '# Como sincronizar mudanças locais de volta pro projeto',
       '',
-      'Este pacote pode ser reenviado pro CSIS (botão "Sincronizar do computador" na tela',
+      'Este pacote pode ser reenviado para a plataforma (botão "Sincronizar do computador" na tela',
       'do projeto) pra ADICIONAR coisas novas que você criou aqui fora — sem duplicar o que',
       'já existia. Nada que já existe no projeto é alterado por essa sincronização; só o que',
       'é novo entra.',

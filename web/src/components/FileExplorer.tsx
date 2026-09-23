@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
+  Download,
   File,
   FilePlus2,
   FileText,
@@ -169,13 +170,37 @@ export function FileExplorer({ scope, podeCriar = true }: { scope: ExplorerScope
   const verificarArquivo = useMutation({
     mutationFn: (arquivo: Arquivo) => api.arquivos.verificarIntegridade(arquivo.id).then((r) => ({ arquivo, ...r })),
     onSuccess: (r) =>
-      setVerificacao({ nome: r.arquivo.nome, integro: r.integro, original: r.hash_original, atual: r.hash_atual }),
+      setVerificacao({ nome: r.arquivo.nome, integro: r.integro, original: r.hash_original, atual: r.hash_atual ?? "conteúdo ausente do servidor" }),
     onError: (e: unknown) =>
       setVerificacao({
         nome: "Erro",
         integro: false,
         original: "",
         atual: e instanceof ApiError ? e.message : "Falha ao verificar.",
+      }),
+  });
+
+  // Confere o hash antes de baixar: se o arquivo em disco foi adulterado, o
+  // servidor recusaria o download de qualquer forma — aqui a pessoa vê o
+  // mesmo aviso da verificação em vez de um erro cru do navegador.
+  const baixarArquivo = useMutation({
+    mutationFn: (arquivo: Arquivo) => api.arquivos.verificarIntegridade(arquivo.id).then((r) => ({ arquivo, ...r })),
+    onSuccess: (r) => {
+      if (!r.integro) {
+        setVerificacao({ nome: r.arquivo.nome, integro: false, original: r.hash_original, atual: r.hash_atual ?? "conteúdo ausente do servidor" });
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = api.arquivos.urlDownload(r.arquivo.id);
+      link.download = r.arquivo.nome;
+      link.click();
+    },
+    onError: (e: unknown) =>
+      setVerificacao({
+        nome: "Erro",
+        integro: false,
+        original: "",
+        atual: e instanceof ApiError ? e.message : "Falha ao baixar.",
       }),
   });
 
@@ -307,6 +332,7 @@ export function FileExplorer({ scope, podeCriar = true }: { scope: ExplorerScope
               aberto={menuAberto === arquivo.id}
               onAbrir={() => setMenuAberto(arquivo.id)}
               itens={[
+                { label: "Baixar", icon: Download, onClick: () => baixarArquivo.mutate(arquivo) },
                 { label: "Verificar integridade", icon: ShieldCheck, onClick: () => verificarArquivo.mutate(arquivo) },
                 ...(podeCriar
                   ? [

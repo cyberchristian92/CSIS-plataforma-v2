@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Logo, useNomeExibicao } from "@/components/Logo";
 
 export default function ForgotPasswordPage() {
+  const nomeExibicao = useNomeExibicao();
   const [email, setEmail] = useState("");
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -27,8 +29,8 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center gap-2.5">
-          <img src="/csis-mark.svg" alt="CSIS" className="h-9 w-9 rounded bg-white p-0.5" />
-          <span className="text-2xl font-bold tracking-wide text-primary">CSIS</span>
+          <Logo className="h-9 w-9" />
+          <span className="text-2xl font-bold tracking-wide text-primary">{nomeExibicao}</span>
         </div>
 
         <h1 className="text-2xl font-bold">Esqueci minha senha</h1>

@@ -4,12 +4,79 @@
 
 export type PapelGlobal = "ADMIN" | "LIDER" | "REVISOR" | "COLABORADOR";
 
+export type SituacaoUsuario = "ATIVO" | "CONVIDADO" | "AGUARDANDO_EMAIL" | "PENDENTE" | "RECUSADO" | "DESATIVADO";
+
 export interface User {
   id: string;
   nome: string;
   email: string;
   papel_global: PapelGlobal;
   criado_em: string;
+  situacao: SituacaoUsuario;
+  ativo: boolean;
+  ultimo_acesso: string | null;
+}
+
+export interface ResultadoConvite {
+  usuario: User;
+  email_enviado: boolean;
+  /// Só vem quando o e-mail não foi enviado (SMTP não configurado).
+  link?: string;
+}
+
+export type TipoCampoInscricao =
+  | "TEXTO"
+  | "TEXTO_LONGO"
+  | "NUMERO"
+  | "DATA"
+  | "EMAIL"
+  | "TELEFONE"
+  | "URL"
+  | "SELECAO"
+  | "MULTIPLA"
+  | "ARQUIVO"
+  | "ACEITE";
+
+export interface DadosCampoInscricao {
+  rotulo: string;
+  ajuda?: string;
+  tipo: TipoCampoInscricao;
+  obrigatorio?: boolean;
+  opcoes?: string[];
+}
+
+export interface CampoInscricao {
+  id: string;
+  rotulo: string;
+  ajuda: string | null;
+  tipo: TipoCampoInscricao;
+  obrigatorio: boolean;
+  opcoes: string[];
+  ordem: number;
+  arquivado: boolean;
+}
+
+export interface FormularioInscricao {
+  aberto: boolean;
+  campos: Pick<CampoInscricao, "id" | "rotulo" | "ajuda" | "tipo" | "obrigatorio" | "opcoes">[];
+}
+
+export interface RespostaInscricao {
+  campo_id: string;
+  rotulo: string;
+  tipo: TipoCampoInscricao;
+  valor: string | number | boolean | string[] | null;
+}
+
+export interface Inscricao {
+  id: string;
+  criado_em: string;
+  respostas: RespostaInscricao[];
+  observacao: string | null;
+  decidido_em: string | null;
+  decidido_por: { id: string; nome: string } | null;
+  user: { id: string; nome: string; email: string; situacao: SituacaoUsuario; papel_global: PapelGlobal };
+  anexos: { id: string; campo_id: string; nome: string; tamanho: number; tipo_mime: string; hash_sha256: string }[];
 }
 
 export interface Workspace {
@@ -27,6 +94,7 @@ export interface Area {
   tipo: string;
   ipfs_cid: string | null;
   restrito: boolean;
+  publico: boolean;
   criado_por_id: string | null;
 }
 
@@ -44,6 +112,7 @@ export interface Projeto {
   criado_por_id: string | null;
   capa_url: string | null;
   video_url: string | null;
+  publico: boolean;
 }
 
 export type MissaoStatus = "PENDENTE" | "EM_ANDAMENTO" | "EM_REVISAO" | "APROVADA" | "REJEITADA";
@@ -198,6 +267,7 @@ export type TipoRecursoRestringivel = "projeto" | "area" | "pasta";
 
 export interface Compartilhamento {
   restrito: boolean;
+  publico: boolean;
   listas: { id: string; nome: string }[];
   usuarios: { id: string; nome: string; email: string }[];
 }
