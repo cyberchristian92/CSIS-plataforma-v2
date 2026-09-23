@@ -46,7 +46,7 @@ export class AreasController {
   @Get('areas/:id')
   @EscopoParam('area')
   buscar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.areasService.buscar(id, user.id, user.papel_global);
+    return this.areasService.buscar(id, user);
   }
 
   @Patch('areas/:id')

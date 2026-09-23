@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EscopoService } from '../acesso/escopo.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { AcessoService } from '../acesso/acesso.service';
 import {
   EVT_CONTEUDO_REMOVIDO,
   EVT_HIERARQUIA_ALTERADA,
@@ -12,15 +11,12 @@ import {
 import { CreateProjetoDto } from './dto/create-projeto.dto';
 import { UpdateProjetoDto } from './dto/update-projeto.dto';
 
-type Papel = 'ADMIN' | 'LIDER' | 'REVISOR' | 'COLABORADOR';
-
 @Injectable()
 export class ProjetosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
     private readonly eventos: EventEmitter2,
-    private readonly acessoService: AcessoService,
     private readonly escopoService: EscopoService,
   ) {}
 

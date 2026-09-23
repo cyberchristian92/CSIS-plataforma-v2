@@ -1,12 +1,7 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { AcessoService } from '../acesso/acesso.service';
 import { EscopoService } from '../acesso/escopo.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import {
@@ -16,15 +11,12 @@ import {
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
 
-type Papel = 'ADMIN' | 'LIDER' | 'REVISOR' | 'COLABORADOR';
-
 @Injectable()
 export class AreasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
     private readonly eventos: EventEmitter2,
-    private readonly acessoService: AcessoService,
     private readonly escopoService: EscopoService,
   ) {}
 
@@ -56,7 +48,7 @@ export class AreasService {
     return this.escopoService.filtrarAreas(user, areas);
   }
 
-  async buscar(id: string, userId?: string, papel?: Papel) {
+  async buscar(id: string, user?: AuthenticatedUser) {
     const area = await this.prisma.area.findUnique({
       where: { id },
       include: { projetos: true },
@@ -64,16 +56,14 @@ export class AreasService {
     if (!area) {
       throw new NotFoundException('Área não encontrada.');
     }
-    if (userId && papel) {
-      const podeVer = await this.acessoService.podeVer(
-        'area',
-        area,
-        userId,
-        papel,
+    // O acesso à área é checado pelo EscopoGuard na rota; aqui só saem da
+    // resposta os projetos que o usuário não pode ver (nomes de casos de
+    // outros clientes também são sigilosos).
+    if (user) {
+      area.projetos = await this.escopoService.filtrarProjetos(
+        user,
+        area.projetos,
       );
-      if (!podeVer) {
-        throw new ForbiddenException('Você não tem acesso a esta área.');
-      }
     }
     return area;
   }
