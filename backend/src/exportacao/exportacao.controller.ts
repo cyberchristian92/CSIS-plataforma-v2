@@ -1,4 +1,12 @@
-import { BadRequestException, Controller, Get, Param, Post, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Res, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -10,6 +18,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ExportacaoService } from './exportacao.service';
+import { EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
 
 function nomeArquivoSeguro(nome: string): string {
   const codigoInicio = 0x0300;
@@ -24,14 +33,24 @@ function nomeArquivoSeguro(nome: string): string {
 }
 
 @Controller()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, EscopoGuard)
 export class ExportacaoController {
   constructor(private readonly exportacaoService: ExportacaoService) {}
 
   @Get('projetos/:id/exportar')
-  async exportar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
-    const { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip, documentosParaZip } =
-      await this.exportacaoService.exportarProjeto(id, user.id);
+  @EscopoParam('projeto')
+  async exportar(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const {
+      manifesto,
+      relatorioMd,
+      guiaSincronizacaoMd,
+      arquivosParaZip,
+      documentosParaZip,
+    } = await this.exportacaoService.exportarProjeto(id, user);
 
     const nomeZip = `projeto-${nomeArquivoSeguro(manifesto.projeto.nome)}.zip`;
     res.set({
@@ -45,7 +64,9 @@ export class ExportacaoController {
     });
     archive.pipe(res);
 
-    archive.append(JSON.stringify(manifesto, null, 2), { name: 'manifesto.json' });
+    archive.append(JSON.stringify(manifesto, null, 2), {
+      name: 'manifesto.json',
+    });
     archive.append(relatorioMd, { name: 'relatorio.md' });
     archive.append(guiaSincronizacaoMd, { name: 'COMO_SINCRONIZAR.md' });
 
@@ -61,8 +82,18 @@ export class ExportacaoController {
 
   @Post('projetos/:id/sincronizar')
   @Roles('ADMIN', 'LIDER')
-  @UseInterceptors(FileInterceptor('pacote', { storage: memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } }))
-  sincronizar(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @CurrentUser() user: AuthenticatedUser) {
+  @UseInterceptors(
+    FileInterceptor('pacote', {
+      storage: memoryStorage(),
+      limits: { fileSize: 200 * 1024 * 1024 },
+    }),
+  )
+  @EscopoParam('projeto')
+  sincronizar(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     if (!file) {
       throw new BadRequestException('Nenhum pacote enviado (campo "pacote").');
     }

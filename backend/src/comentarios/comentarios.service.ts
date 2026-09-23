@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CreateComentarioDto } from './dto/create-comentario.dto';
@@ -14,7 +18,14 @@ export class ComentariosService {
     const comentario = await this.prisma.comentarioMissao.create({
       data: { missao_id: missaoId, autor_id: autorId, texto: dto.texto },
     });
-    await this.auditoriaService.registrar(autorId, 'COMENTAR', 'Missao', missaoId, null, { texto: dto.texto });
+    await this.auditoriaService.registrar(
+      autorId,
+      'COMENTAR',
+      'Missao',
+      missaoId,
+      null,
+      { texto: dto.texto },
+    );
     return this.prisma.comentarioMissao.findUnique({
       where: { id: comentario.id },
       include: { autor: { select: { id: true, nome: true } } },
@@ -30,15 +41,29 @@ export class ComentariosService {
   }
 
   async remover(id: string, userId: string, papel: string) {
-    const comentario = await this.prisma.comentarioMissao.findUnique({ where: { id } });
+    const comentario = await this.prisma.comentarioMissao.findUnique({
+      where: { id },
+    });
     if (!comentario) {
       throw new NotFoundException('Comentário não encontrado.');
     }
     const podeRemoverQualquer = papel === 'ADMIN' || papel === 'LIDER';
     if (comentario.autor_id !== userId && !podeRemoverQualquer) {
-      throw new ForbiddenException('Você só pode remover os próprios comentários.');
+      throw new ForbiddenException(
+        'Você só pode remover os próprios comentários.',
+      );
     }
     await this.prisma.comentarioMissao.delete({ where: { id } });
+    // A auditoria é a única memória do que foi dito depois que o comentário
+    // some — registra o texto completo e quem era o autor.
+    await this.auditoriaService.registrar(
+      userId,
+      'REMOVER',
+      'ComentarioMissao',
+      id,
+      comentario,
+      null,
+    );
     return { ok: true };
   }
 }

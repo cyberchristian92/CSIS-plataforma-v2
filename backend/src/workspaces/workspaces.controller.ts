@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -7,15 +16,19 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
 
 @Controller('workspaces')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, EscopoGuard)
 export class WorkspacesController {
   constructor(private readonly workspacesService: WorkspacesService) {}
 
   @Post()
   @Roles('ADMIN', 'LIDER')
-  criar(@Body() dto: CreateWorkspaceDto, @CurrentUser() user: AuthenticatedUser) {
+  criar(
+    @Body() dto: CreateWorkspaceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.workspacesService.criar(dto, user.id);
   }
 
@@ -25,18 +38,25 @@ export class WorkspacesController {
   }
 
   @Get(':id')
+  @EscopoParam('workspace')
   buscar(@Param('id') id: string) {
     return this.workspacesService.buscar(id);
   }
 
   @Patch(':id')
   @Roles('ADMIN', 'LIDER')
-  atualizar(@Param('id') id: string, @Body() dto: UpdateWorkspaceDto, @CurrentUser() user: AuthenticatedUser) {
+  @EscopoParam('workspace')
+  atualizar(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkspaceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.workspacesService.atualizar(id, dto, user.id);
   }
 
   @Delete(':id')
   @Roles('ADMIN')
+  @EscopoParam('workspace')
   remover(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workspacesService.remover(id, user.id);
   }

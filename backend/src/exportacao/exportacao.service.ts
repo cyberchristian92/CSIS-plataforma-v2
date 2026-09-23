@@ -1,15 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yauzl from 'yauzl';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { EVT_CONTEUDO_ALTERADO, EVT_HIERARQUIA_ALTERADA } from '../integridade/integridade.events';
+import {
+  EVT_CONTEUDO_ALTERADO,
+  EVT_HIERARQUIA_ALTERADA,
+} from '../integridade/integridade.events';
 import { sha256Buffer } from '../arquivos/utils/hash.util';
+import { sha256Arquivo, uploadsDir } from '../arquivos/utils/armazenamento';
+import { EscopoService } from '../acesso/escopo.service';
+import type { AuthenticatedUser } from '../common/types/authenticated-user';
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
+// Limites da leitura de um pacote enviado para sincronização: sem eles, um
+// .zip pequeno e muito comprimido ("zip bomb") esgotaria a memória do servidor.
+const ZIP_MAX_ENTRADAS = 10_000;
+const ZIP_MAX_BYTES_DESCOMPACTADOS = 2 * 1024 * 1024 * 1024;
 
 interface ArquivoParaZip {
   id: string;
@@ -45,9 +58,13 @@ function extrairTituloDocumento(conteudo: string): string {
   let inicioBusca = 0;
 
   if (linhas[0]?.trim() === '---') {
-    const fimFrontMatter = linhas.findIndex((l, i) => i > 0 && l.trim() === '---');
+    const fimFrontMatter = linhas.findIndex(
+      (l, i) => i > 0 && l.trim() === '---',
+    );
     if (fimFrontMatter > 0) {
-      const linhaTitulo = linhas.slice(1, fimFrontMatter).find((l) => /^title\s*:/i.test(l.trim()));
+      const linhaTitulo = linhas
+        .slice(1, fimFrontMatter)
+        .find((l) => /^title\s*:/i.test(l.trim()));
       if (linhaTitulo) {
         const valor = linhaTitulo
           .slice(linhaTitulo.indexOf(':') + 1)
@@ -63,7 +80,9 @@ function extrairTituloDocumento(conteudo: string): string {
     .slice(inicioBusca)
     .map((l) => l.trim())
     .find((l) => l.length > 0);
-  return (primeiraLinha ?? '').replace(/^#+\s*/, '').slice(0, 60) || 'documento';
+  return (
+    (primeiraLinha ?? '').replace(/^#+\s*/, '').slice(0, 60) || 'documento'
+  );
 }
 
 // Formato aceito em manifesto.json ao SINCRONIZAR um pacote de volta (ver
@@ -112,6 +131,7 @@ export class ExportacaoService {
     private readonly prisma: PrismaService,
     private readonly auditoriaService: AuditoriaService,
     private readonly eventos: EventEmitter2,
+    private readonly escopoService: EscopoService,
   ) {}
 
   // Reconstrói, pra cada Pasta, o caminho relativo completo dentro da árvore
@@ -121,7 +141,14 @@ export class ExportacaoService {
   // plataforma. Desempata colisão de nome (duas pastas irmãs com o mesmo
   // nome — o schema não impede) anexando um pedaço do id à segunda em
   // diante, processadas em ordem estável (criado_em).
-  private resolverCaminhosPastas(pastas: { id: string; nome: string; pasta_pai_id: string | null; criado_em: Date }[]): Map<string, string> {
+  private resolverCaminhosPastas(
+    pastas: {
+      id: string;
+      nome: string;
+      pasta_pai_id: string | null;
+      criado_em: Date;
+    }[],
+  ): Map<string, string> {
     const porId = new Map(pastas.map((p) => [p.id, p]));
     const caminhoPorId = new Map<string, string>();
     const caminhosUsados = new Set<string>();
@@ -133,7 +160,9 @@ export class ExportacaoService {
       const pasta = porId.get(id);
       if (!pasta || profundidade > 50) return ''; // proteção contra ciclo/dado corrompido
 
-      const prefixo = pasta.pasta_pai_id ? resolver(pasta.pasta_pai_id, profundidade + 1) : '';
+      const prefixo = pasta.pasta_pai_id
+        ? resolver(pasta.pasta_pai_id, profundidade + 1)
+        : '';
       let segmento = segmentoPastaSeguro(pasta.nome);
       let caminho = prefixo ? `${prefixo}/${segmento}` : segmento;
 
@@ -146,13 +175,16 @@ export class ExportacaoService {
       return caminho;
     };
 
-    for (const pasta of [...pastas].sort((a, b) => a.criado_em.getTime() - b.criado_em.getTime())) {
+    for (const pasta of [...pastas].sort(
+      (a, b) => a.criado_em.getTime() - b.criado_em.getTime(),
+    )) {
       resolver(pasta.id);
     }
     return caminhoPorId;
   }
 
-  async exportarProjeto(projetoId: string, solicitanteId: string) {
+  async exportarProjeto(projetoId: string, user: AuthenticatedUser) {
+    const solicitanteId = user.id;
     const projeto = await this.prisma.projeto.findUnique({
       where: { id: projetoId },
       include: { area: { include: { workspace: true } } },
@@ -165,28 +197,93 @@ export class ExportacaoService {
       where: { projeto_id: projetoId },
       orderBy: { titulo: 'asc' },
       include: {
-        responsaveis: { include: { user: { select: { id: true, nome: true, email: true } } } },
+        responsaveis: {
+          include: { user: { select: { id: true, nome: true, email: true } } },
+        },
         entregas: {
           orderBy: { criado_em: 'asc' },
           include: {
             autor: { select: { id: true, nome: true, email: true } },
-            revisoes: { orderBy: { criado_em: 'asc' }, include: { revisor: { select: { id: true, nome: true, email: true } } } },
+            revisoes: {
+              orderBy: { criado_em: 'asc' },
+              include: {
+                revisor: { select: { id: true, nome: true, email: true } },
+              },
+            },
           },
         },
-        comentarios: { orderBy: { criado_em: 'asc' }, include: { autor: { select: { id: true, nome: true } } } },
+        comentarios: {
+          orderBy: { criado_em: 'asc' },
+          include: { autor: { select: { id: true, nome: true } } },
+        },
         itens_checklist: { orderBy: { ordem: 'asc' } },
       },
     });
 
-    const documentos = await this.prisma.documento.findMany({
+    // Conteúdo dentro de pastas restritas que quem exporta não pode ver fica
+    // fora do pacote (o manifesto registra quantos itens foram omitidos).
+    const pastasOcultas = await this.escopoService.pastasOcultas(user, {
+      projeto_id: projetoId,
+    });
+    const visivel = (item: { pasta_id: string | null }) =>
+      !item.pasta_id || !pastasOcultas.has(item.pasta_id);
+
+    const todosDocumentos = await this.prisma.documento.findMany({
       where: { projeto_id: projetoId },
       orderBy: { criado_em: 'asc' },
       include: { autor: { select: { id: true, nome: true, email: true } } },
     });
 
-    const arquivos = await this.prisma.arquivo.findMany({ where: { projeto_id: projetoId }, orderBy: { enviado_em: 'asc' } });
+    const todosArquivos = await this.prisma.arquivo.findMany({
+      where: { projeto_id: projetoId },
+      orderBy: { enviado_em: 'asc' },
+    });
+    const todasPastas = await this.prisma.pasta.findMany({
+      where: { projeto_id: projetoId },
+    });
 
-    const pastas = await this.prisma.pasta.findMany({ where: { projeto_id: projetoId } });
+    const documentos = todosDocumentos.filter(visivel);
+    const pastas = todasPastas.filter((p) => !pastasOcultas.has(p.id));
+    const itensOmitidos =
+      todosDocumentos.length -
+      documentos.length +
+      (todasPastas.length - pastas.length) +
+      todosArquivos.filter((a) => !visivel(a)).length;
+
+    // Confere cada arquivo contra o hash registrado no envio ANTES de empacotar:
+    // um pacote pericial nunca pode sair incompleto ou adulterado em silêncio.
+    const arquivos: typeof todosArquivos = [];
+    const arquivosAusentes: {
+      id: string;
+      nome: string;
+      hash_sha256: string;
+    }[] = [];
+    const arquivosDivergentes: {
+      id: string;
+      nome: string;
+      hash_sha256: string;
+      hash_atual: string;
+    }[] = [];
+    for (const arquivo of todosArquivos.filter(visivel)) {
+      const hashAtual = await sha256Arquivo(arquivo.caminho).catch(() => null);
+      if (hashAtual === null) {
+        arquivosAusentes.push({
+          id: arquivo.id,
+          nome: arquivo.nome,
+          hash_sha256: arquivo.hash_sha256,
+        });
+        continue;
+      }
+      if (hashAtual !== arquivo.hash_sha256) {
+        arquivosDivergentes.push({
+          id: arquivo.id,
+          nome: arquivo.nome,
+          hash_sha256: arquivo.hash_sha256,
+          hash_atual: hashAtual,
+        });
+      }
+      arquivos.push(arquivo);
+    }
 
     // enviado_por é um id "solto" (sem relação no schema) — resolve os nomes manualmente.
     const idsEnviadoPor = [...new Set(arquivos.map((a) => a.enviado_por))];
@@ -204,7 +301,8 @@ export class ExportacaoService {
       ...documentos.map((d) => d.id),
       ...pastas.map((p) => p.id),
     ];
-    const auditoria = await this.auditoriaService.listarPorEntidades(entidadeIds);
+    const auditoria =
+      await this.auditoriaService.listarPorEntidades(entidadeIds);
 
     // Reconstrói a árvore real de pastas dentro do zip — sem isso, todo
     // arquivo/documento caía solto numa única "arquivos/" plana, perdendo a
@@ -221,7 +319,9 @@ export class ExportacaoService {
       caminhoNoDisco: a.caminho,
       caminhoNoZip: `arquivos/${prefixoPasta(a.pasta_id)}${a.id.slice(0, 8)}-${segmentoPastaSeguro(a.nome)}`,
     }));
-    const caminhoZipPorId = new Map(arquivosParaZip.map((a) => [a.id, a.caminhoNoZip]));
+    const caminhoZipPorId = new Map(
+      arquivosParaZip.map((a) => [a.id, a.caminhoNoZip]),
+    );
 
     // Cada Documento também vira um arquivo .md de verdade dentro do zip
     // (não só o texto embutido em manifesto.json) — dá pra abrir/editar
@@ -232,7 +332,9 @@ export class ExportacaoService {
       conteudo: d.conteudo,
       caminhoNoZip: `documentos/${prefixoPasta(d.pasta_id)}${d.id.slice(0, 8)}-${segmentoPastaSeguro(extrairTituloDocumento(d.conteudo))}.md`,
     }));
-    const caminhoZipDocumentoPorId = new Map(documentosParaZip.map((d) => [d.id, d.caminhoNoZip]));
+    const caminhoZipDocumentoPorId = new Map(
+      documentosParaZip.map((d) => [d.id, d.caminhoNoZip]),
+    );
 
     const manifesto = {
       gerado_em: new Date().toISOString(),
@@ -256,15 +358,27 @@ export class ExportacaoService {
         valor_bounty: m.valor_bounty,
         tags: m.tags,
         responsaveis: m.responsaveis.map((r) => r.user),
-        checklist: m.itens_checklist.map((i) => ({ texto: i.texto, concluido: i.concluido })),
-        comentarios: m.comentarios.map((c) => ({ autor: c.autor.nome, texto: c.texto, criado_em: c.criado_em })),
+        checklist: m.itens_checklist.map((i) => ({
+          texto: i.texto,
+          concluido: i.concluido,
+        })),
+        comentarios: m.comentarios.map((c) => ({
+          autor: c.autor.nome,
+          texto: c.texto,
+          criado_em: c.criado_em,
+        })),
         entregas: m.entregas.map((e) => ({
           id: e.id,
           autor: e.autor,
           conteudo: e.conteudo,
           status: e.status,
           criado_em: e.criado_em,
-          revisoes: e.revisoes.map((r) => ({ revisor: r.revisor, status: r.status, comentario: r.comentario, criado_em: r.criado_em })),
+          revisoes: e.revisoes.map((r) => ({
+            revisor: r.revisor,
+            status: r.status,
+            comentario: r.comentario,
+            criado_em: r.criado_em,
+          })),
         })),
       })),
       // Pasta física real do projeto — cada uma referencia o próprio "caminho"
@@ -308,21 +422,44 @@ export class ExportacaoService {
         dados_anteriores: log.dados_anteriores,
         dados_novos: log.dados_novos,
       })),
+      // Arquivos registrados na plataforma cujo conteúdo não estava mais no
+      // servidor no momento da exportação — NÃO estão no pacote.
+      arquivos_ausentes: arquivosAusentes,
+      // Arquivos cujo conteúdo em disco não bate com o hash do envio — ESTÃO
+      // no pacote, mas não devem ser tratados como a evidência original.
+      arquivos_divergentes: arquivosDivergentes,
+      itens_omitidos_por_restricao_de_acesso: itensOmitidos,
       nota_integridade:
         'Para verificar a integridade de um arquivo, recalcule o SHA-256 do arquivo correspondente em arquivos/ (caminho em "caminho_no_pacote") e compare com "hash_sha256".',
     };
 
     const relatorioMd = this.gerarRelatorioMarkdown(manifesto);
 
-    await this.auditoriaService.registrar(solicitanteId, 'EXPORTAR', 'Projeto', projetoId, null, {
-      total_missoes: missoes.length,
-      total_arquivos: arquivos.length,
-      total_documentos: documentos.length,
-    });
+    await this.auditoriaService.registrar(
+      solicitanteId,
+      'EXPORTAR',
+      'Projeto',
+      projetoId,
+      null,
+      {
+        total_missoes: missoes.length,
+        total_arquivos: arquivos.length,
+        total_documentos: documentos.length,
+        arquivos_ausentes: arquivosAusentes.length,
+        arquivos_divergentes: arquivosDivergentes.length,
+        itens_omitidos_por_restricao_de_acesso: itensOmitidos,
+      },
+    );
 
     const guiaSincronizacaoMd = this.gerarGuiaSincronizacao();
 
-    return { manifesto, relatorioMd, guiaSincronizacaoMd, arquivosParaZip, documentosParaZip };
+    return {
+      manifesto,
+      relatorioMd,
+      guiaSincronizacaoMd,
+      arquivosParaZip,
+      documentosParaZip,
+    };
   }
 
   // Explica, dentro do próprio pacote, como usar este mesmo manifesto.json
@@ -397,14 +534,18 @@ export class ExportacaoService {
 
   private gerarRelatorioMarkdown(m: any): string {
     const linhas: string[] = [];
-    const fmt = (d: unknown) => (d ? new Date(d as string).toLocaleString('pt-BR') : '—');
+    const fmt = (d: unknown) =>
+      d ? new Date(d as string).toLocaleString('pt-BR') : '—';
 
     linhas.push(`# Relatório do Projeto: ${m.projeto.nome}`);
     linhas.push('');
     linhas.push(`- **Status:** ${m.projeto.status}`);
-    linhas.push(`- **Área:** ${m.projeto.area} (Workspace: ${m.projeto.workspace})`);
+    linhas.push(
+      `- **Área:** ${m.projeto.area} (Workspace: ${m.projeto.workspace})`,
+    );
     linhas.push(`- **Prazo:** ${fmt(m.projeto.prazo)}`);
-    if (m.projeto.descricao) linhas.push(`- **Descrição:** ${m.projeto.descricao}`);
+    if (m.projeto.descricao)
+      linhas.push(`- **Descrição:** ${m.projeto.descricao}`);
     linhas.push(`- **Exportado em:** ${fmt(m.gerado_em)}`);
     linhas.push('');
     linhas.push(`## Missões (${m.missoes.length})`);
@@ -412,37 +553,52 @@ export class ExportacaoService {
     for (const missao of m.missoes) {
       linhas.push('');
       linhas.push(`### ${missao.titulo} — ${missao.status}`);
-      const nomesResponsaveis = missao.responsaveis?.map((r: { nome: string }) => r.nome).join(', ');
+      const nomesResponsaveis = missao.responsaveis
+        ?.map((r: { nome: string }) => r.nome)
+        .join(', ');
       linhas.push(`- Responsáveis: ${nomesResponsaveis || 'Sem responsável'}`);
       linhas.push(`- Prazo: ${fmt(missao.prazo)}`);
-      if (missao.criterio_aceite) linhas.push(`- Critério de aceite: ${missao.criterio_aceite}`);
+      if (missao.criterio_aceite)
+        linhas.push(`- Critério de aceite: ${missao.criterio_aceite}`);
       if (missao.descricao) linhas.push(`- Descrição: ${missao.descricao}`);
       if (missao.tags?.length) linhas.push(`- Tags: ${missao.tags.join(', ')}`);
 
       if (missao.checklist?.length) {
         linhas.push(`- Checklist:`);
-        for (const item of missao.checklist) linhas.push(`  - [${item.concluido ? 'x' : ' '}] ${item.texto}`);
+        for (const item of missao.checklist)
+          linhas.push(`  - [${item.concluido ? 'x' : ' '}] ${item.texto}`);
       }
 
       if (missao.comentarios?.length) {
         linhas.push(`- Comentários:`);
-        for (const c of missao.comentarios) linhas.push(`  - **${c.autor}** (${fmt(c.criado_em)}): ${c.texto}`);
+        for (const c of missao.comentarios)
+          linhas.push(`  - **${c.autor}** (${fmt(c.criado_em)}): ${c.texto}`);
       }
 
       if (missao.entregas?.length) {
         linhas.push(`- Entregas:`);
         for (const e of missao.entregas) {
-          linhas.push(`  - Entrega de **${e.autor.nome}** em ${fmt(e.criado_em)} — status: ${e.status}`);
+          linhas.push(
+            `  - Entrega de **${e.autor.nome}** em ${fmt(e.criado_em)} — status: ${e.status}`,
+          );
           if (e.conteudo) linhas.push(`    > ${e.conteudo}`);
           for (const r of e.revisoes) {
-            linhas.push(`    - Revisão de **${r.revisor.nome}** (${fmt(r.criado_em)}): ${r.status}${r.comentario ? ` — ${r.comentario}` : ''}`);
+            linhas.push(
+              `    - Revisão de **${r.revisor.nome}** (${fmt(r.criado_em)}): ${r.status}${r.comentario ? ` — ${r.comentario}` : ''}`,
+            );
           }
         }
       }
     }
 
-    const caminhoPastaPorId = new Map<string, string>((m.pastas ?? []).map((p: { id: string; caminho: string | null }) => [p.id, p.caminho ?? '']));
-    const localDe = (pastaId: string | null) => (pastaId ? (caminhoPastaPorId.get(pastaId) ?? '—') : 'Raiz');
+    const caminhoPastaPorId = new Map<string, string>(
+      (m.pastas ?? []).map((p: { id: string; caminho: string | null }) => [
+        p.id,
+        p.caminho ?? '',
+      ]),
+    );
+    const localDe = (pastaId: string | null) =>
+      pastaId ? (caminhoPastaPorId.get(pastaId) ?? '—') : 'Raiz';
 
     if (m.pastas?.length) {
       linhas.push('');
@@ -455,16 +611,22 @@ export class ExportacaoService {
     linhas.push('');
     linhas.push(`## Documentos (${m.documentos.length})`);
     for (const doc of m.documentos) {
-      linhas.push(`- **${extrairTituloDocumento(doc.conteudo)}** — pasta: ${localDe(doc.pasta_id)}, autor: ${doc.autor.nome}, criado em ${fmt(doc.criado_em)}${doc.tags?.length ? `, tags: ${doc.tags.join(', ')}` : ''}`);
+      linhas.push(
+        `- **${extrairTituloDocumento(doc.conteudo)}** — pasta: ${localDe(doc.pasta_id)}, autor: ${doc.autor.nome}, criado em ${fmt(doc.criado_em)}${doc.tags?.length ? `, tags: ${doc.tags.join(', ')}` : ''}`,
+      );
     }
 
     linhas.push('');
     linhas.push(`## Arquivos (${m.arquivos.length})`);
     linhas.push('');
-    linhas.push('| Nome | Pasta | Hash SHA-256 | Tamanho (bytes) | Enviado por | Enviado em |');
+    linhas.push(
+      '| Nome | Pasta | Hash SHA-256 | Tamanho (bytes) | Enviado por | Enviado em |',
+    );
     linhas.push('| --- | --- | --- | --- | --- | --- |');
     for (const a of m.arquivos) {
-      linhas.push(`| ${a.nome} | ${localDe(a.pasta_id)} | \`${a.hash_sha256}\` | ${a.tamanho} | ${a.enviado_por?.nome ?? '—'} | ${fmt(a.enviado_em)} |`);
+      linhas.push(
+        `| ${a.nome} | ${localDe(a.pasta_id)} | \`${a.hash_sha256}\` | ${a.tamanho} | ${a.enviado_por?.nome ?? '—'} | ${fmt(a.enviado_em)} |`,
+      );
     }
 
     linhas.push('');
@@ -473,7 +635,9 @@ export class ExportacaoService {
     linhas.push('| Data/Hora | Ação | Entidade | Usuário |');
     linhas.push('| --- | --- | --- | --- |');
     for (const log of m.auditoria) {
-      linhas.push(`| ${fmt(log.timestamp)} | ${log.acao} | ${log.entidade} | ${log.usuario?.nome ?? 'Sistema'} |`);
+      linhas.push(
+        `| ${fmt(log.timestamp)} | ${log.acao} | ${log.entidade} | ${log.usuario?.nome ?? 'Sistema'} |`,
+      );
     }
 
     linhas.push('');
@@ -496,7 +660,13 @@ export class ExportacaoService {
   private async lerZip(buffer: Buffer): Promise<Map<string, Buffer>> {
     const zip = await yauzl.fromBufferPromise(buffer, { lazyEntries: true });
     const entradas = new Map<string, Buffer>();
+    let totalBytes = 0;
     for await (const entry of zip.eachEntry()) {
+      if (entradas.size >= ZIP_MAX_ENTRADAS) {
+        throw new BadRequestException(
+          `Pacote com entradas demais (máximo ${ZIP_MAX_ENTRADAS}).`,
+        );
+      }
       // Normaliza separador de caminho: o formato do ZIP exige "/", mas
       // ferramentas do Windows (ex.: Compress-Archive do PowerShell) às
       // vezes gravam "\" — sem normalizar aqui, um "caminho_no_pacote":
@@ -506,7 +676,17 @@ export class ExportacaoService {
       if (nomeNormalizado.endsWith('/')) continue; // diretório, sem conteúdo
       const stream = await zip.openReadStreamPromise(entry);
       const partes: Buffer[] = [];
-      for await (const parte of stream) partes.push(parte as Buffer);
+      for await (const parte of stream) {
+        // Conta os bytes REAIS descompactados (não o tamanho declarado no
+        // cabeçalho do zip, que pode mentir).
+        totalBytes += (parte as Buffer).length;
+        if (totalBytes > ZIP_MAX_BYTES_DESCOMPACTADOS) {
+          throw new BadRequestException(
+            'Pacote grande demais depois de descompactado (máximo 2 GB).',
+          );
+        }
+        partes.push(parte as Buffer);
+      }
       entradas.set(nomeNormalizado, Buffer.concat(partes));
     }
     return entradas;
@@ -518,8 +698,14 @@ export class ExportacaoService {
   // pro formato exato aceito. Deliberadamente não é um "importar genérico" —
   // recusa qualquer pacote cujo manifesto.projeto.id não bata com o
   // projetoId do endpoint, pra não misturar dados de projetos diferentes.
-  async sincronizarLocal(projetoId: string, zipBuffer: Buffer, userId: string): Promise<ResultadoSincronizacao> {
-    const projeto = await this.prisma.projeto.findUnique({ where: { id: projetoId } });
+  async sincronizarLocal(
+    projetoId: string,
+    zipBuffer: Buffer,
+    userId: string,
+  ): Promise<ResultadoSincronizacao> {
+    const projeto = await this.prisma.projeto.findUnique({
+      where: { id: projetoId },
+    });
     if (!projeto) {
       throw new NotFoundException('Projeto não encontrado.');
     }
@@ -527,7 +713,9 @@ export class ExportacaoService {
     const entradasZip = await this.lerZip(zipBuffer);
     const manifestoBytes = entradasZip.get('manifesto.json');
     if (!manifestoBytes) {
-      throw new BadRequestException('O pacote enviado não contém um manifesto.json na raiz.');
+      throw new BadRequestException(
+        'O pacote enviado não contém um manifesto.json na raiz.',
+      );
     }
 
     let manifesto: {
@@ -551,7 +739,12 @@ export class ExportacaoService {
     const avisos: string[] = [];
     const chaveParaMissaoId = new Map<string, string>();
     const missoesExistentesIds = new Set(
-      (await this.prisma.missao.findMany({ where: { projeto_id: projetoId }, select: { id: true } })).map((m) => m.id),
+      (
+        await this.prisma.missao.findMany({
+          where: { projeto_id: projetoId },
+          select: { id: true },
+        })
+      ).map((m) => m.id),
     );
 
     const resolverMissaoId = (ref: string | undefined): string | undefined => {
@@ -560,13 +753,17 @@ export class ExportacaoService {
         const chave = ref.slice(1);
         const id = chaveParaMissaoId.get(chave);
         if (!id) {
-          avisos.push(`Referência "${ref}" não encontrada (nenhuma missão nova com chave_local "${chave}" neste pacote) — item ficará sem missão associada.`);
+          avisos.push(
+            `Referência "${ref}" não encontrada (nenhuma missão nova com chave_local "${chave}" neste pacote) — item ficará sem missão associada.`,
+          );
           return undefined;
         }
         return id;
       }
       if (missoesExistentesIds.has(ref)) return ref;
-      avisos.push(`Referência de missão "${ref}" não encontrada neste projeto — item ficará sem missão associada.`);
+      avisos.push(
+        `Referência de missão "${ref}" não encontrada neste projeto — item ficará sem missão associada.`,
+      );
       return undefined;
     };
 
@@ -574,9 +771,14 @@ export class ExportacaoService {
     const documentosNovos = (manifesto.documentos ?? []).filter((d) => !d.id);
     const arquivosNovos = (manifesto.arquivos ?? []).filter((a) => !a.id);
 
-    const primeiraColuna = await this.prisma.coluna.findFirst({ where: { projeto_id: projetoId }, orderBy: { ordem: 'asc' } });
+    const primeiraColuna = await this.prisma.coluna.findFirst({
+      where: { projeto_id: projetoId },
+      orderBy: { ordem: 'asc' },
+    });
     const colunasPorNome = new Map(
-      (await this.prisma.coluna.findMany({ where: { projeto_id: projetoId } })).map((c) => [c.nome, c.id]),
+      (
+        await this.prisma.coluna.findMany({ where: { projeto_id: projetoId } })
+      ).map((c) => [c.nome, c.id]),
     );
 
     const missoesCriadasIds: string[] = [];
@@ -588,11 +790,17 @@ export class ExportacaoService {
       for (const entrada of missoesNovas) {
         try {
           if (!entrada.titulo?.trim()) {
-            avisos.push('Uma entrada em "missoes" foi ignorada por não ter "titulo".');
+            avisos.push(
+              'Uma entrada em "missoes" foi ignorada por não ter "titulo".',
+            );
             continue;
           }
-          const colunaId = entrada.coluna ? colunasPorNome.get(entrada.coluna) : primeiraColuna?.id;
-          const ordem = colunaId ? await tx.missao.count({ where: { coluna_id: colunaId } }) : 0;
+          const colunaId = entrada.coluna
+            ? colunasPorNome.get(entrada.coluna)
+            : primeiraColuna?.id;
+          const ordem = colunaId
+            ? await tx.missao.count({ where: { coluna_id: colunaId } })
+            : 0;
           const missao = await tx.missao.create({
             data: {
               projeto_id: projetoId,
@@ -607,16 +815,21 @@ export class ExportacaoService {
             },
           });
           missoesCriadasIds.push(missao.id);
-          if (entrada.chave_local) chaveParaMissaoId.set(entrada.chave_local, missao.id);
+          if (entrada.chave_local)
+            chaveParaMissaoId.set(entrada.chave_local, missao.id);
         } catch (erro) {
-          avisos.push(`Missão "${entrada.titulo ?? '(sem título)'}" não pôde ser criada: ${(erro as Error).message}`);
+          avisos.push(
+            `Missão "${entrada.titulo ?? '(sem título)'}" não pôde ser criada: ${(erro as Error).message}`,
+          );
         }
       }
 
       for (const entrada of documentosNovos) {
         try {
           if (!entrada.conteudo?.trim()) {
-            avisos.push('Uma entrada em "documentos" foi ignorada por não ter "conteudo".');
+            avisos.push(
+              'Uma entrada em "documentos" foi ignorada por não ter "conteudo".',
+            );
             continue;
           }
           const documento = await tx.documento.create({
@@ -630,24 +843,34 @@ export class ExportacaoService {
           });
           documentosCriadosIds.push(documento.id);
         } catch (erro) {
-          avisos.push(`Um documento novo não pôde ser criado: ${(erro as Error).message}`);
+          avisos.push(
+            `Um documento novo não pôde ser criado: ${(erro as Error).message}`,
+          );
         }
       }
 
       for (const entrada of arquivosNovos) {
         try {
           if (!entrada.nome?.trim() || !entrada.caminho_no_pacote) {
-            avisos.push('Uma entrada em "arquivos" foi ignorada por não ter "nome" ou "caminho_no_pacote".');
+            avisos.push(
+              'Uma entrada em "arquivos" foi ignorada por não ter "nome" ou "caminho_no_pacote".',
+            );
             continue;
           }
-          const bytes = entradasZip.get(entrada.caminho_no_pacote.replace(/\\/g, '/'));
+          const bytes = entradasZip.get(
+            entrada.caminho_no_pacote.replace(/\\/g, '/'),
+          );
           if (!bytes) {
-            avisos.push(`Arquivo "${entrada.caminho_no_pacote}" referenciado em manifesto.json não foi encontrado dentro do pacote.`);
+            avisos.push(
+              `Arquivo "${entrada.caminho_no_pacote}" referenciado em manifesto.json não foi encontrado dentro do pacote.`,
+            );
             continue;
           }
           const id = randomUUID();
-          const nomeSeguro = entrada.nome.replace(/[\\/]/g, '_').replace(/^\.+/, '_');
-          const caminho = join(UPLOADS_DIR, `${id}-${nomeSeguro}`);
+          const nomeSeguro = entrada.nome
+            .replace(/[\\/]/g, '_')
+            .replace(/^\.+/, '_');
+          const caminho = join(uploadsDir(), `${id}-${nomeSeguro}`);
           const arquivo = await tx.arquivo.create({
             data: {
               id,
@@ -664,7 +887,9 @@ export class ExportacaoService {
           arquivosParaGravar.push({ caminho, buffer: bytes });
           arquivosCriadosIds.push(arquivo.id);
         } catch (erro) {
-          avisos.push(`Arquivo "${entrada.nome ?? '(sem nome)'}" não pôde ser criado: ${(erro as Error).message}`);
+          avisos.push(
+            `Arquivo "${entrada.nome ?? '(sem nome)'}" não pôde ser criado: ${(erro as Error).message}`,
+          );
         }
       }
     });
@@ -672,19 +897,39 @@ export class ExportacaoService {
     // Só grava em disco depois que a transação confirmou os registros no
     // banco — evita deixar arquivo órfão em disco se a transação falhar.
     if (arquivosParaGravar.length > 0) {
-      await mkdir(UPLOADS_DIR, { recursive: true });
-      await Promise.all(arquivosParaGravar.map((a) => writeFile(a.caminho, a.buffer)));
+      await mkdir(uploadsDir(), { recursive: true });
+      await Promise.all(
+        arquivosParaGravar.map((a) => writeFile(a.caminho, a.buffer)),
+      );
     }
 
-    await this.auditoriaService.registrar(userId, 'SINCRONIZAR_LOCAL', 'Projeto', projetoId, null, {
-      missoes_criadas: missoesCriadasIds.length,
-      documentos_criados: documentosCriadosIds.length,
-      arquivos_criados: arquivosCriadosIds.length,
-    });
+    await this.auditoriaService.registrar(
+      userId,
+      'SINCRONIZAR_LOCAL',
+      'Projeto',
+      projetoId,
+      null,
+      {
+        missoes_criadas: missoesCriadasIds.length,
+        documentos_criados: documentosCriadosIds.length,
+        arquivos_criados: arquivosCriadosIds.length,
+      },
+    );
 
-    for (const id of missoesCriadasIds) this.eventos.emit(EVT_HIERARQUIA_ALTERADA, { tipo: 'missao', id, userId });
-    for (const id of documentosCriadosIds) this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'documento', id, userId });
-    for (const id of arquivosCriadosIds) this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id, userId });
+    for (const id of missoesCriadasIds)
+      this.eventos.emit(EVT_HIERARQUIA_ALTERADA, {
+        tipo: 'missao',
+        id,
+        userId,
+      });
+    for (const id of documentosCriadosIds)
+      this.eventos.emit(EVT_CONTEUDO_ALTERADO, {
+        tipo: 'documento',
+        id,
+        userId,
+      });
+    for (const id of arquivosCriadosIds)
+      this.eventos.emit(EVT_CONTEUDO_ALTERADO, { tipo: 'arquivo', id, userId });
 
     return {
       missoes_criadas: missoesCriadasIds.length,

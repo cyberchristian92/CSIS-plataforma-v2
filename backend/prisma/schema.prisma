@@ -33,12 +33,19 @@ datasource db {
 // ----------------------------------------------------------------------------
 
 model User {
-  id           String   @id @default(uuid())
-  nome         String
-  email        String   @unique
-  senha_hash   String
-  papel_global String   @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
-  criado_em    DateTime @default(now())
+  id            String   @id @default(uuid())
+  nome          String
+  email         String   @unique
+  senha_hash    String
+  papel_global  String   @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
+  criado_em     DateTime @default(now())
+  // Desativar em vez de apagar: o usuário perde o acesso na hora, mas o
+  // nome dele continua nos registros de auditoria e nas entregas/revisões.
+  ativo         Boolean  @default(true)
+  // Incrementado no logout, na troca de senha e na desativação. O JWT
+  // carrega a versão vigente quando foi emitido — token com versão antiga
+  // é recusado, então sair da conta invalida a sessão no servidor.
+  sessao_versao Int      @default(0)
 
   entregas            Entrega[]
   revisoes            Revisao[]
