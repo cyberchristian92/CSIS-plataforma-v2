@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { EmailService } from './email.service';
+import { TokensService } from './tokens.service';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
@@ -17,13 +18,15 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
       useFactory: (): JwtModuleOptions => ({
         secret: process.env.JWT_SECRET,
         signOptions: {
-          expiresIn: (process.env.JWT_EXPIRES_IN ?? '1d') as NonNullable<JwtModuleOptions['signOptions']>['expiresIn'],
+          expiresIn: (process.env.JWT_EXPIRES_IN ?? '1d') as NonNullable<
+            JwtModuleOptions['signOptions']
+          >['expiresIn'],
         },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailService],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, EmailService, TokensService],
+  exports: [AuthService, EmailService, TokensService],
 })
 export class AuthModule {}

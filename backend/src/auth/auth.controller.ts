@@ -14,7 +14,9 @@ import {
 import type { Request, Response } from 'express';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
+import { ConvidarDto } from './dto/convidar.dto';
+import { AceitarConviteDto } from './dto/aceitar-convite.dto';
+import { ConfirmarEmailDto } from './dto/confirmar-email.dto';
 import { LoginDto } from './dto/login.dto';
 import { AtualizarPapelDto } from './dto/atualizar-papel.dto';
 import { DefinirAtivoDto } from './dto/definir-ativo.dto';
@@ -51,11 +53,48 @@ function opcoesCookie() {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
+  // --- Convite ---------------------------------------------------------------
+  // Substitui o antigo POST /auth/register, em que o Admin definia a senha
+  // da outra pessoa.
+
+  @Post('convites')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'LIDER')
-  register(@Body() dto: RegisterDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.authService.register(dto, user.id, user.papel_global);
+  convidar(@Body() dto: ConvidarDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.authService.convidar(dto, user.id, user.papel_global);
+  }
+
+  @Post('convites/aceitar')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 15 * 60 * 1000 } })
+  aceitarConvite(@Body() dto: AceitarConviteDto) {
+    return this.authService.aceitarConvite(dto.token, dto.senha);
+  }
+
+  @Post('convites/:id/reenviar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'LIDER')
+  reenviarConvite(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.reenviarConvite(id, user.id);
+  }
+
+  @Get('convites/:token')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 15 * 60 * 1000 } })
+  previaConvite(@Param('token') token: string) {
+    return this.authService.previaConvite(token);
+  }
+
+  @Post('confirmar-email')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 15 * 60 * 1000 } })
+  confirmarEmail(@Body() dto: ConfirmarEmailDto) {
+    return this.authService.confirmarEmail(dto.token);
   }
 
   @Post('login')

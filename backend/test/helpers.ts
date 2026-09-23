@@ -4,7 +4,9 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import TestAgent from 'supertest/lib/agent';
 import type { Papel } from '../src/common/constants/papeis';
-import { URL_API_TESTE, URL_BANCO_TESTE } from './env-teste';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DIR_EMAILS_TESTE, URL_API_TESTE, URL_BANCO_TESTE } from './env-teste';
 
 export const SENHA_PADRAO = 'SenhaForte123';
 
@@ -100,4 +102,30 @@ export async function alocar(ctx: Contexto, projetoId: string, userId: string) {
       responsaveis: { create: { user_id: userId } },
     },
   });
+}
+
+/// Último e-mail enviado para `para` (o servidor de teste grava cada um como
+/// JSON — ver global-setup) e o token do link que ele contém.
+export function ultimoEmail(para: string): {
+  assunto: string;
+  texto: string;
+  token: string | null;
+} {
+  const arquivos = readdirSync(DIR_EMAILS_TESTE)
+    .sort()
+    .map(
+      (nome) =>
+        JSON.parse(readFileSync(join(DIR_EMAILS_TESTE, nome), 'utf8')) as {
+          para: string;
+          assunto: string;
+          texto: string;
+        },
+    )
+    .filter((m) => m.para === para);
+  const ultimo = arquivos.at(-1);
+  if (!ultimo) throw new Error(`Nenhum e-mail para ${para}`);
+  return {
+    ...ultimo,
+    token: /[?&]token=([a-f0-9]+)/.exec(ultimo.texto)?.[1] ?? null,
+  };
 }

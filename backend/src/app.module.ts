@@ -23,6 +23,7 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
 import { LaudoModule } from './laudo/laudo.module';
 import { IntegridadeModule } from './integridade/integridade.module';
 import { AcessoModule } from './acesso/acesso.module';
+import { InscricaoModule } from './inscricao/inscricao.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AcessoModule } from './acesso/acesso.module';
     LaudoModule,
     IntegridadeModule,
     AcessoModule,
+    InscricaoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
