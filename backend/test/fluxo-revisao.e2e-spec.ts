@@ -4,6 +4,7 @@ import {
   criarHierarquia,
   criarUsuarioLogado,
   encerrar,
+  alocar,
 } from './helpers';
 
 /// Fluxo Missão → Entrega → Revisão (RF03, RF04, RNF03 do TCC).
@@ -30,6 +31,9 @@ describe('Fluxo de entrega e revisão', () => {
         responsaveis: { create: { user_id: especialista.user.id } },
       },
     });
+    // Alocado em OUTRA missão do mesmo projeto: enxerga o projeto, mas não
+    // é responsável pela missão do cenário.
+    await alocar(ctx, projeto.id, outroColaborador.user.id);
     return { lider, especialista, outroColaborador, revisor, projeto, missao };
   }
 

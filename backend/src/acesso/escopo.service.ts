@@ -205,6 +205,22 @@ export class EscopoService {
       )
         return false;
     }
+    // Colaborador: visibilidade padrão restrita (além de `restrito`). O
+    // projeto precisa estar aberto a ele; conteúdo solto numa Área exige que
+    // a Área esteja aberta a ele.
+    if (papel === 'COLABORADOR') {
+      if (cadeia.projetoId) {
+        const abertos = await this.projetosAbertosAoColaborador(userId, [
+          cadeia.projetoId,
+        ]);
+        if (!abertos.has(cadeia.projetoId)) return false;
+      } else if (cadeia.areaId) {
+        const abertas = await this.areasAbertasAoColaborador(userId, [
+          cadeia.areaId,
+        ]);
+        if (!abertas.has(cadeia.areaId)) return false;
+      }
+    }
     if (cadeia.pastaIds.length > 0) {
       const pastas = await this.prisma.pasta.findMany({
         where: { id: { in: cadeia.pastaIds } },
@@ -219,6 +235,119 @@ export class EscopoService {
       if (pastas.some((p) => !visiveis.has(p.id))) return false;
     }
     return true;
+  }
+
+  /// Filtra projetos pelo que o usuário pode ver: `restrito` para todos
+  /// (menos Admin) e, para Colaborador, também a visibilidade padrão restrita.
+  async filtrarProjetos<
+    T extends { id: string; restrito: boolean; criado_por_id: string | null },
+  >(user: AuthenticatedUser, projetos: T[]): Promise<T[]> {
+    if (user.papel_global === 'ADMIN') return projetos;
+    const naoRestritos = await this.acessoService.idsVisiveis(
+      'projeto',
+      projetos,
+      user.id,
+      user.papel_global,
+    );
+    const abertos =
+      user.papel_global === 'COLABORADOR'
+        ? await this.projetosAbertosAoColaborador(
+            user.id,
+            projetos.map((p) => p.id),
+          )
+        : null;
+    return projetos.filter(
+      (p) => naoRestritos.has(p.id) && (!abertos || abertos.has(p.id)),
+    );
+  }
+
+  async filtrarAreas<
+    T extends { id: string; restrito: boolean; criado_por_id: string | null },
+  >(user: AuthenticatedUser, areas: T[]): Promise<T[]> {
+    if (user.papel_global === 'ADMIN') return areas;
+    const naoRestritas = await this.acessoService.idsVisiveis(
+      'area',
+      areas,
+      user.id,
+      user.papel_global,
+    );
+    const abertas =
+      user.papel_global === 'COLABORADOR'
+        ? await this.areasAbertasAoColaborador(
+            user.id,
+            areas.map((a) => a.id),
+          )
+        : null;
+    return areas.filter(
+      (a) => naoRestritas.has(a.id) && (!abertas || abertas.has(a.id)),
+    );
+  }
+
+  /// Critério de "participação" de um Colaborador num Projeto: marcado
+  /// público, criado por ele, incluído no compartilhamento (direto ou via
+  /// Lista), ou responsável por alguma missão do projeto (alocação).
+  private participacaoEmProjeto(userId: string) {
+    return {
+      OR: [
+        { publico: true },
+        { criado_por_id: userId },
+        {
+          acessos: {
+            some: {
+              OR: [
+                { user_id: userId },
+                { lista: { membros: { some: { user_id: userId } } } },
+              ],
+            },
+          },
+        },
+        { missoes: { some: { responsaveis: { some: { user_id: userId } } } } },
+      ],
+    };
+  }
+
+  private async projetosAbertosAoColaborador(
+    userId: string,
+    projetoIds: string[],
+  ): Promise<Set<string>> {
+    if (projetoIds.length === 0) return new Set();
+    const abertos = await this.prisma.projeto.findMany({
+      where: { id: { in: projetoIds }, ...this.participacaoEmProjeto(userId) },
+      select: { id: true },
+    });
+    return new Set(abertos.map((p) => p.id));
+  }
+
+  /// Área aberta a um Colaborador: marcada pública, criada por ele, incluída
+  /// no compartilhamento, ou com algum projeto aberto a ele (senão ele não
+  /// conseguiria navegar até o próprio projeto).
+  private async areasAbertasAoColaborador(
+    userId: string,
+    areaIds: string[],
+  ): Promise<Set<string>> {
+    if (areaIds.length === 0) return new Set();
+    const abertas = await this.prisma.area.findMany({
+      where: {
+        id: { in: areaIds },
+        OR: [
+          { publico: true },
+          { criado_por_id: userId },
+          {
+            acessos: {
+              some: {
+                OR: [
+                  { user_id: userId },
+                  { lista: { membros: { some: { user_id: userId } } } },
+                ],
+              },
+            },
+          },
+          { projetos: { some: this.participacaoEmProjeto(userId) } },
+        ],
+      },
+      select: { id: true },
+    });
+    return new Set(abertas.map((a) => a.id));
   }
 
   /// Ids das pastas que o usuário NÃO pode ver dentro de um escopo (Projeto,

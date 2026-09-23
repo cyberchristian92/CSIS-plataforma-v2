@@ -5,6 +5,7 @@ import {
   criarHierarquia,
   criarUsuarioLogado,
   encerrar,
+  alocar,
 } from './helpers';
 
 /// Listas de Acesso: um recurso marcado `restrito` precisa ficar inacessível
@@ -231,6 +232,7 @@ describe('Listas de Acesso — recurso restrito', () => {
     const admin = await criarUsuarioLogado(ctx, 'ADMIN');
     const colega = await criarUsuarioLogado(ctx, 'COLABORADOR');
     const { projeto } = await criarHierarquia(ctx, admin.user.id);
+    await alocar(ctx, projeto.id, colega.user.id);
     const pasta = await ctx.prisma.pasta.create({
       data: { projeto_id: projeto.id, nome: 'Restrita' },
     });

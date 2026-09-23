@@ -40,11 +40,7 @@ export class AreasController {
     @Param('workspaceId') workspaceId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.areasService.listarPorWorkspace(
-      workspaceId,
-      user.id,
-      user.papel_global,
-    );
+    return this.areasService.listarPorWorkspace(workspaceId, user);
   }
 
   @Get('areas/:id')
