@@ -6,19 +6,26 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { RevisoesService } from './revisoes.service';
 import { CreateRevisaoDto } from './dto/create-revisao.dto';
+import { EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
 
 @Controller()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, EscopoGuard)
 export class RevisoesController {
   constructor(private readonly revisoesService: RevisoesService) {}
 
   @Post('entregas/:entregaId/revisoes')
   @Roles('ADMIN', 'LIDER', 'REVISOR')
-  criar(@Param('entregaId') entregaId: string, @Body() dto: CreateRevisaoDto, @CurrentUser() user: AuthenticatedUser) {
+  @EscopoParam('entrega', 'entregaId')
+  criar(
+    @Param('entregaId') entregaId: string,
+    @Body() dto: CreateRevisaoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.revisoesService.criar(entregaId, dto, user.id);
   }
 
   @Get('entregas/:entregaId/revisoes')
+  @EscopoParam('entrega', 'entregaId')
   listarPorEntrega(@Param('entregaId') entregaId: string) {
     return this.revisoesService.listarPorEntrega(entregaId);
   }

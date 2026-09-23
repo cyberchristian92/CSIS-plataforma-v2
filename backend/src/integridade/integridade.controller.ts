@@ -1,4 +1,12 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -6,6 +14,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegridadeService } from './integridade.service';
+import { EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
 
 const MODELOS = {
   workspace: 'workspace',
@@ -16,7 +25,7 @@ const MODELOS = {
 } as const;
 
 @Controller()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, EscopoGuard)
 export class IntegridadeController {
   constructor(
     private readonly integridadeService: IntegridadeService,
@@ -35,10 +44,27 @@ export class IntegridadeController {
   /// Consulta o CID atual de um nó da árvore — qualquer um dos tipos que
   /// carregam `ipfs_cid` no schema (ver prisma/schema.prisma).
   @Get('integridade/:tipo/:id')
-  async consultar(@Param('tipo') tipo: keyof typeof MODELOS, @Param('id') id: string) {
+  @EscopoParam(':tipo', 'id', [
+    'workspace',
+    'area',
+    'projeto',
+    'missao',
+    'pasta',
+  ])
+  async consultar(
+    @Param('tipo') tipo: keyof typeof MODELOS,
+    @Param('id') id: string,
+  ) {
+    // hasOwn: `tipo` vem da URL — sem isto, "constructor" ou "__proto__"
+    // resolviam para propriedades herdadas do objeto e davam erro 500.
+    if (!Object.hasOwn(MODELOS, tipo))
+      throw new BadRequestException('Tipo inválido.');
     const modelo = MODELOS[tipo];
-    if (!modelo) return { erro: 'Tipo inválido.' };
-    const registro = await (this.prisma[modelo] as any).findUnique({ where: { id }, select: { id: true, ipfs_cid: true } });
-    return registro ?? { erro: 'Não encontrado.' };
+    const registro = await (this.prisma[modelo] as any).findUnique({
+      where: { id },
+      select: { id: true, ipfs_cid: true },
+    });
+    if (!registro) throw new NotFoundException('Não encontrado.');
+    return registro;
   }
 }

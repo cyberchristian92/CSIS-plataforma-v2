@@ -1,10 +1,24 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AtualizarPapelDto } from './dto/atualizar-papel.dto';
+import { DefinirAtivoDto } from './dto/definir-ativo.dto';
+import { LoginThrottlerGuard } from './login-throttler.guard';
 import { EsqueciSenhaDto } from './dto/esqueci-senha.dto';
 import { RedefinirSenhaDto } from './dto/redefinir-senha.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -15,6 +29,23 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user';
 
 const COOKIE_NOME = 'access_token';
 const COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 1 dia
+
+/// `secure` (cookie só trafega em HTTPS) liga sozinho em produção. Atrás de
+/// um proxy que termina o HTTPS (Cloudflare Tunnel) continua certo: quem
+/// decide é o navegador, que está falando HTTPS. COOKIE_SECURE=false existe
+/// só para testar a build de produção em http://localhost.
+function opcoesCookie() {
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure,
+    path: '/',
+    maxAge: COOKIE_MAX_AGE_MS,
+  };
+}
 
 @Controller('auth')
 export class AuthController {
@@ -29,23 +60,27 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 15 * 60 * 1000 } })
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { token, user } = await this.authService.login(dto);
 
-    res.cookie(COOKIE_NOME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: COOKIE_MAX_AGE_MS,
-    });
+    res.cookie(COOKIE_NOME, token, opcoesCookie());
 
     return user;
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(COOKIE_NOME);
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // Sem guard de propósito: quem está com a sessão já expirada também
+    // precisa conseguir "sair" (e ter o cookie apagado).
+    const cookies = req.cookies as Record<string, string | undefined>;
+    await this.authService.logoutPorToken(cookies[COOKIE_NOME]);
+    res.clearCookie(COOKIE_NOME, { ...opcoesCookie(), maxAge: undefined });
     return { ok: true };
   }
 
@@ -65,8 +100,33 @@ export class AuthController {
   @Patch('usuarios/:id/papel')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'LIDER')
-  atualizarPapel(@Param('id') id: string, @Body() dto: AtualizarPapelDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.authService.atualizarPapel(id, dto.papelGlobal, user.id, user.papel_global);
+  atualizarPapel(
+    @Param('id') id: string,
+    @Body() dto: AtualizarPapelDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.atualizarPapel(
+      id,
+      dto.papelGlobal,
+      user.id,
+      user.papel_global,
+    );
+  }
+
+  @Patch('usuarios/:id/ativo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'LIDER')
+  definirAtivo(
+    @Param('id') id: string,
+    @Body() dto: DefinirAtivoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.definirAtivo(
+      id,
+      dto.ativo,
+      user.id,
+      user.papel_global,
+    );
   }
 
   @Post('esqueci-senha')

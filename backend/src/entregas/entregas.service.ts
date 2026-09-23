@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CreateEntregaDto } from './dto/create-entrega.dto';
@@ -10,16 +15,59 @@ export class EntregasService {
     private readonly auditoriaService: AuditoriaService,
   ) {}
 
+  /// Só quem é responsável pela missão entrega, e só com a missão EM_ANDAMENTO
+  /// (iniciada, ou devolvida por uma rejeição). Sem isto, um terceiro podia
+  /// entregar no lugar do responsável — e o responsável então aprovava o
+  /// próprio trabalho, contornando a Segregação de Funções — ou reabrir uma
+  /// missão já APROVADA mandando uma entrega nova.
   async criar(missaoId: string, dto: CreateEntregaDto, autorId: string) {
     const entrega = await this.prisma.$transaction(async (tx) => {
-      const nova = await tx.entrega.create({
-        data: { missao_id: missaoId, autor_id: autorId, conteudo: dto.conteudo },
+      const missao = await tx.missao.findUnique({
+        where: { id: missaoId },
+        include: { responsaveis: { select: { user_id: true } } },
       });
-      await tx.missao.update({ where: { id: missaoId }, data: { status: 'EM_REVISAO' } });
-      return nova;
+      if (!missao) {
+        throw new NotFoundException('Missão não encontrada.');
+      }
+      if (!missao.responsaveis.some((r) => r.user_id === autorId)) {
+        throw new ForbiddenException(
+          'Só um responsável pela missão pode enviar entregas.',
+        );
+      }
+      if (missao.status !== 'EM_ANDAMENTO') {
+        throw new BadRequestException(
+          `Só é possível entregar uma missão em andamento (status atual: ${missao.status}). ` +
+            'Inicie a missão, ou aguarde a revisão da entrega anterior.',
+        );
+      }
+      // updateMany com o status no filtro: se duas entregas chegarem ao mesmo
+      // tempo, só a primeira muda a missão — a segunda vê count 0 e desiste.
+      const { count } = await tx.missao.updateMany({
+        where: { id: missaoId, status: 'EM_ANDAMENTO' },
+        data: { status: 'EM_REVISAO' },
+      });
+      if (count === 0) {
+        throw new BadRequestException(
+          'A missão mudou de status durante a entrega — recarregue e tente de novo.',
+        );
+      }
+      return tx.entrega.create({
+        data: {
+          missao_id: missaoId,
+          autor_id: autorId,
+          conteudo: dto.conteudo,
+        },
+      });
     });
 
-    await this.auditoriaService.registrar(autorId, 'SUBMETER', 'Entrega', entrega.id, null, entrega);
+    await this.auditoriaService.registrar(
+      autorId,
+      'SUBMETER',
+      'Entrega',
+      entrega.id,
+      null,
+      entrega,
+    );
     return entrega;
   }
 
@@ -37,7 +85,7 @@ export class EntregasService {
       include: {
         autor: { select: { id: true, nome: true, email: true } },
         revisoes: true,
-        arquivos: true,
+        arquivos: { omit: { caminho: true } },
         missao: true,
       },
     });
