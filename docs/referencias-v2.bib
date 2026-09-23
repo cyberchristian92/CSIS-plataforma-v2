@@ -1,0 +1,152 @@
+% Referências levantadas para fundamentar a arquitetura da CSIS Platform v2
+% (Postgres/Prisma + IPFS para a árvore de pastas/arquivos). Verificadas via
+% ACM Digital Library / IEEE Xplore, acesso institucional UFPA/CAPES.
+% NÃO destinado ao texto do TCC (já defendido/em defesa com IPFS fora de escopo) —
+% serve à v2 e a uma eventual continuação de pesquisa.
+% Ver docs/ipfs-chain-of-custody-research.md para notas de encaixe por bloco.
+
+% ============================================================
+% BLOCO 1 — IPFS aplicado a perícia digital / cadeia de custódia
+% ============================================================
+@misc{benet2014ipfs,
+  author = {Benet, Juan},
+  title  = {IPFS - Content Addressed, Versioned, P2P File System},
+  year   = {2014},
+  note   = {arXiv:1407.3561 — whitepaper fundacional do IPFS},
+  url    = {https://arxiv.org/abs/1407.3561}
+}
+
+@inproceedings{viswanathan2024ipfsforensics,
+  author    = {Viswanathan, Jayaraj and Udhaya Kumar, S.},
+  title     = {Blockchain-based Decentralized Digital Forensics Case Management System using IPFS},
+  booktitle = {2024 IEEE International Conference on Blockchain and Distributed Systems Security (ICBDS)},
+  year      = {2024},
+  note      = {DOI não confirmado nesta sessão -- verificar antes de citar formalmente}
+}
+
+@inproceedings{shilpa2023crimeevidence,
+  author    = {Shilpa, C. and Shanthakumara, A. H.},
+  title     = {An Implementation of Blockchain Technology in Combination with IPFS for Crime Evidence Management System},
+  booktitle = {2023 International Conference on Computer Communication and Informatics (ICCCI)},
+  year      = {2023},
+  note      = {Citado por 3 trabalhos; DOI não confirmado nesta sessão}
+}
+
+@inproceedings{mishra2025enhancedcoc,
+  author    = {Mishra, Renu and Arya, Premnarayan and Narwaria, Mamta and Kaur, Inderpreet},
+  title     = {Blockchain-Enhanced Chain of Custody for Digital Forensic Evidence Management},
+  booktitle = {2025 IEEE International Conference on Blockchain and Distributed Systems Security (ICBDS)},
+  year      = {2025}
+}
+
+@inproceedings{onyeashie2025hyperledger,
+  author    = {Onyeashie, Belinda I. and Abubakar, Mwrwan and Leimich, Petra and McKeown, Sean and Russell, Gordon},
+  title     = {Privacy-Preserving and Scalable Digital Evidence Management: A Hyperledger Fabric Architecture with Growth Projections for Law Enforcement},
+  booktitle = {2025 International Conference on New Trends in Computing Sciences (ICTCS)},
+  year      = {2025},
+  note      = {Mesma tecnologia (Hyperledger Fabric) que a experiência prática de Christian na Polícia Civil do Pará}
+}
+
+% ============================================================
+% BLOCO 2 — Merkle DAG / armazenamento endereçado por conteúdo para
+% trilhas de auditoria (geral, não forense-específico)
+% ============================================================
+@inproceedings{snodgrass2004tamperdetection,
+  author    = {Snodgrass, Richard T. and Yao, Shilong Stanley and Collberg, Christian},
+  title     = {Tamper detection in audit logs},
+  booktitle = {VLDB '04: Proceedings of the Thirtieth International Conference on Very Large Data Bases},
+  pages     = {504--515},
+  year      = {2004},
+  note      = {Paper clássico/fundacional sobre detecção de adulteração em logs; DOI não confirmado nesta sessão}
+}
+
+@article{zheng2020provenance,
+  author  = {Zheng, Nan and Ives, Zachary G.},
+  title   = {Compact, tamper-resistant archival of fine-grained provenance},
+  journal = {Proceedings of the VLDB Endowment (PVLDB)},
+  volume  = {14},
+  number  = {4},
+  pages   = {485--497},
+  year    = {2020},
+  doi     = {10.14778/3436905.3436909}
+}
+
+@article{shi2024closerlook,
+  author    = {Shi, Ruizhe and Cheng, Ruizhi and Han, Bo and Cheng, Yue and Chen, Songqing},
+  title     = {A Closer Look into IPFS: Accessibility, Content, and Performance},
+  journal   = {Proceedings of the ACM on Measurement and Analysis of Computing Systems (POMACS)},
+  volume    = {8},
+  number    = {2},
+  articleno = {20},
+  pages     = {1--31},
+  year      = {2024},
+  doi       = {10.1145/3656015}
+}
+
+% ============================================================
+% BLOCO 3 — IPFS privado/permissionado: controle de acesso e
+% criptografia para dado sensível
+% ============================================================
+@inproceedings{jo2023accesscontrol,
+  author    = {Jo, Yeongbin and Cho, Yunsang and Kim, Hokeun},
+  title     = {Secure and Lightweight Access Control for Highly Decentralized and Distributed File Systems},
+  booktitle = {Mid4CC '23: Proceedings of the 1st International Workshop on Middleware for the Computing Continuum},
+  pages     = {1--6},
+  year      = {2023},
+  doi       = {10.1145/3631309.3632832}
+}
+
+@inproceedings{shi2025decentralizationdilemma,
+  author    = {Shi, Ruizhe and Fu, Yuqi and Cheng, Ruizhi and Han, Bo and Cheng, Yue and Chen, Songqing},
+  title     = {The Decentralization Dilemma: Performance Trade-Offs in IPFS and Breakpoints},
+  booktitle = {IMC '25: Proceedings of the 2025 ACM Internet Measurement Conference},
+  pages     = {662--676},
+  year      = {2025},
+  doi       = {10.1145/3730567.3764453}
+}
+
+@inproceedings{pulmano2025fhir,
+  author    = {Pulmano, Christian and Fernandez, Proceso},
+  title     = {A Hybrid Architecture for a Secured Health Information Exchange using FHIR, Blockchain, and IPFS},
+  booktitle = {ICMHI '25: Proceedings of the 2025 9th International Conference on Medical and Health Informatics},
+  pages     = {187--191},
+  year      = {2025},
+  doi       = {10.1145/3761712.3761751},
+  note      = {Não é forense -- é saúde -- mas mesmo padrão de dado sensível regulado + IPFS + criptografia/controle de acesso}
+}
+
+% ============================================================
+% BLOCO 4 — IPFS + blockchain (padrão dominante na literatura;
+% justifica por que a v2 diverge conscientemente disso)
+% ============================================================
+@inproceedings{carolina2026qr,
+  author    = {Carolina, Brigita and Khifzan, Fauzan and Choi, John},
+  title     = {Towards Dynamic QR Representation of Large Verifiable Documents via IPFS Driven Decentralized Storage and Blockchain State Commitments},
+  booktitle = {IAIT '26: Proceedings of the 14th International Conference on Advances in Information Technology},
+  articleno = {12},
+  pages     = {1--16},
+  year      = {2026},
+  doi       = {10.1145/3816713.3816784}
+}
+
+@inproceedings{singh2023avdata,
+  author    = {Singh, Akarsh and Sural, Shounak and Sengupta, Tirthankar and Sural, Shamik},
+  title     = {Trusted Sharing of Autonomous Vehicle Crash Data using Enterprise Blockchain and IPFS},
+  booktitle = {BSCI '23: Proceedings of the 5th ACM International Symposium on Blockchain and Secure Critical Infrastructure},
+  pages     = {11--24},
+  year      = {2023},
+  doi       = {10.1145/3594556.3594623},
+  note      = {Caso de uso análogo a evidência de incidente; ver extensão de periódico singh2026avchain}
+}
+
+@article{singh2026avchain,
+  author    = {Singh, Akarsh and Sural, Shounak and Sengupta, Tirthankar and Sural, Shamik},
+  title     = {AVChain: Trusted Sharing of Autonomous Vehicle Crash Incident Data using Interoperating HyperLedger Fabric Networks and IPFS},
+  journal   = {Distributed Ledger Technologies: Research and Practice (DLT)},
+  volume    = {5},
+  number    = {3},
+  articleno = {31},
+  pages     = {1--29},
+  year      = {2026},
+  doi       = {10.1145/3709158}
+}
