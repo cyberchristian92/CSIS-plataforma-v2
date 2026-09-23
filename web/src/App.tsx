@@ -1,8 +1,9 @@
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import type { PapelGlobal } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
+import { useNomeExibicao } from "@/components/Logo";
 import LoginPage from "@/pages/LoginPage";
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
@@ -23,6 +24,11 @@ import UsersPage from "@/pages/UsersPage";
 import AuditPage from "@/pages/AuditPage";
 import ArchivedProjectsPage from "@/pages/ArchivedProjectsPage";
 import DocumentEditorPage from "@/pages/DocumentEditorPage";
+import AcceptInvitePage from "@/pages/AcceptInvitePage";
+import ConfirmEmailPage from "@/pages/ConfirmEmailPage";
+import SignupPage from "@/pages/SignupPage";
+import SignupQueuePage from "@/pages/SignupQueuePage";
+import SignupFormPage from "@/pages/SignupFormPage";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -48,12 +54,26 @@ function RequireRole({ roles, children }: { roles: PapelGlobal[]; children: Reac
   return children;
 }
 
+// Título da aba do navegador = nome da instância (white-label), não "CSIS" fixo.
+function TituloDaAba() {
+  const nome = useNomeExibicao();
+  useEffect(() => {
+    document.title = nome;
+  }, [nome]);
+  return null;
+}
+
 export default function App() {
   return (
+    <>
+      <TituloDaAba />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
       <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+      <Route path="/convite" element={<AcceptInvitePage />} />
+      <Route path="/confirmar-email" element={<ConfirmEmailPage />} />
+      <Route path="/cadastro" element={<SignupPage />} />
       <Route path="/documentos/:documentoId" element={<RequireAuth><DocumentEditorPage /></RequireAuth>} />
       <Route
         element={
@@ -122,6 +142,22 @@ export default function App() {
           }
         />
         <Route
+          path="/inscricoes"
+          element={
+            <RequireRole roles={["ADMIN", "LIDER", "REVISOR"]}>
+              <SignupQueuePage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/formulario-inscricao"
+          element={
+            <RequireRole roles={["ADMIN", "LIDER", "REVISOR"]}>
+              <SignupFormPage />
+            </RequireRole>
+          }
+        />
+        <Route
           path="/auditoria"
           element={
             <RequireRole roles={["ADMIN", "LIDER"]}>
@@ -139,5 +175,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

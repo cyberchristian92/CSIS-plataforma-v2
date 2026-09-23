@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTransport, type Transporter } from 'nodemailer';
+import { PrismaService } from '../prisma/prisma.service';
+import { nomeDaInstancia } from '../common/marca';
 
+/// `{{instancia}}` no assunto ou no texto vira o nome da instância
+/// (white-label) — nenhum e-mail deve ter o nome da plataforma fixo.
 export interface MensagemEmail {
   para: string;
   assunto: string;
@@ -31,17 +35,26 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private smtp: Transporter | null = null;
 
-  /// true quando as mensagens realmente saem da plataforma. Sem isso, a
-  /// interface mostra o link (convite, confirmação) para ser copiado à mão —
-  /// a instância funciona mesmo antes de alguém configurar SMTP.
-  get enviaDeVerdade(): boolean {
-    return transporteConfigurado() === 'smtp';
+  constructor(private readonly prisma: PrismaService) {}
+
+  /// false quando a instância não entrega e-mails (sem SMTP configurado).
+  /// Nesse caso nenhum fluxo pode depender de a pessoa clicar num link
+  /// recebido por e-mail — ex.: o cadastro pula a confirmação de e-mail.
+  /// (O modo `arquivo` dos testes conta como entrega.)
+  get entregaEmails(): boolean {
+    return transporteConfigurado() !== 'log';
   }
 
   /// Nunca lança: uma falha de e-mail não pode desfazer um cadastro ou
   /// convite já gravado. Devolve se a mensagem foi entregue ao provedor.
-  async enviar(mensagem: MensagemEmail): Promise<boolean> {
+  async enviar(original: MensagemEmail): Promise<boolean> {
     try {
+      const instancia = await nomeDaInstancia(this.prisma);
+      const mensagem = {
+        ...original,
+        assunto: original.assunto.replaceAll('{{instancia}}', instancia),
+        texto: original.texto.replaceAll('{{instancia}}', instancia),
+      };
       switch (transporteConfigurado()) {
         case 'smtp':
           await this.transportador().sendMail({
@@ -69,7 +82,7 @@ export class EmailService {
       }
     } catch (erro) {
       this.logger.error(
-        `Falha ao enviar e-mail para ${mensagem.para}: ${(erro as Error).message}`,
+        `Falha ao enviar e-mail para ${original.para}: ${(erro as Error).message}`,
       );
       return false;
     }

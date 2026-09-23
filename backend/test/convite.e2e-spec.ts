@@ -64,6 +64,24 @@ describe('Convite de usuário', () => {
       .expect(401);
   });
 
+  it('e-mail de convite usa o nome da instância (white-label), não "CSIS" fixo', async () => {
+    const marca = await request(ctx.app).get('/branding').expect(200);
+    const nomeInstancia = marca.body.nome as string;
+    expect(nomeInstancia).toBeTruthy();
+    const admin = await criarUsuarioLogado(ctx, 'ADMIN');
+    const email = emailUnico('marca');
+    await admin.agente
+      .post('/auth/convites')
+      .send({ nome: 'Beltrano', email, papelGlobal: 'LIDER' })
+      .expect(201);
+    const mensagem = ultimoEmail(email);
+    expect(mensagem.assunto).toContain(nomeInstancia);
+    expect(mensagem.texto).toContain(nomeInstancia);
+    expect(mensagem.texto).toContain('Coordenador');
+    if (nomeInstancia !== 'CSIS')
+      expect(`${mensagem.assunto} ${mensagem.texto}`).not.toContain('CSIS');
+  });
+
   it('coordenador não convida alguém como Admin', async () => {
     const lider = await criarUsuarioLogado(ctx, 'LIDER');
     await lider.agente

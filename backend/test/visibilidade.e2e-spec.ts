@@ -125,6 +125,35 @@ describe('Visibilidade padrão por papel', () => {
     expect(projetos.body).toEqual([]);
   });
 
+  it('compartilhamento define o público numa única operação, registrando o estado anterior', async () => {
+    const admin = await criarUsuarioLogado(ctx, 'ADMIN');
+    const aluno = await criarUsuarioLogado(ctx, 'COLABORADOR');
+    const { projeto } = await criarHierarquia(ctx, admin.user.id);
+    const res = await admin.agente
+      .put(`/compartilhamento/projeto/${projeto.id}`)
+      .send({ restrito: false, publico: true, listaIds: [], userIds: [] })
+      .expect(200);
+    expect(res.body).toMatchObject({ restrito: false, publico: true });
+    await aluno.agente.get(`/projetos/${projeto.id}`).expect(200);
+
+    // Restringir desliga o público.
+    const restrito = await admin.agente
+      .put(`/compartilhamento/projeto/${projeto.id}`)
+      .send({ restrito: true, publico: true, listaIds: [], userIds: [] })
+      .expect(200);
+    expect(restrito.body).toMatchObject({ restrito: true, publico: false });
+    await aluno.agente.get(`/projetos/${projeto.id}`).expect(403);
+
+    const log = await ctx.prisma.logAuditoria.findFirst({
+      where: { acao: 'ATUALIZAR_COMPARTILHAMENTO', entidade_id: projeto.id },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(log?.dados_anteriores).toMatchObject({
+      restrito: false,
+      publico: true,
+    });
+  });
+
   it('só Admin/Coordenador marcam algo como público', async () => {
     const admin = await criarUsuarioLogado(ctx, 'ADMIN');
     const revisor = await criarUsuarioLogado(ctx, 'REVISOR');

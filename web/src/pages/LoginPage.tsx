@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo, useNomeExibicao } from "@/components/Logo";
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const nomeExibicao = useNomeExibicao();
+  const formulario = useQuery({ queryKey: ["formulario-inscricao"], queryFn: api.inscricao.formulario });
+  const aviso = (location.state as { aviso?: string } | null)?.aviso;
 
   if (user) {
     const from = (location.state as { from?: string })?.from ?? "/";
@@ -47,6 +50,8 @@ export default function LoginPage() {
         <h1 className="text-3xl font-bold">Entrar</h1>
         <p className="mt-1 text-muted-foreground">Acesse a plataforma de gestão técnica</p>
 
+        {aviso && <p className="mt-6 max-w-sm rounded-md bg-status-approved/10 p-3 text-sm text-status-approved">{aviso}</p>}
+
         <form onSubmit={onSubmit} className="mt-8 flex max-w-sm flex-col gap-3">
           <Input
             type="email"
@@ -73,6 +78,14 @@ export default function LoginPage() {
           <Link to="/esqueci-senha" className="text-center text-sm text-muted-foreground hover:text-primary">
             Esqueci minha senha
           </Link>
+          {formulario.data?.aberto && (
+            <p className="text-center text-sm text-muted-foreground">
+              Ainda não tem conta?{" "}
+              <Link to="/cadastro" className="font-medium text-primary hover:underline">
+                Cadastre-se
+              </Link>
+            </p>
+          )}
         </form>
       </div>
 

@@ -13,7 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { EmailService } from './email.service';
 import { TokensService } from './tokens.service';
-import { Papel } from '../common/constants/papeis';
+import { NOME_PAPEL, Papel } from '../common/constants/papeis';
 import { origensPermitidas } from '../configurar-app';
 import { LoginDto } from './dto/login.dto';
 import { ConvidarDto } from './dto/convidar.dto';
@@ -142,9 +142,9 @@ export class AuthService {
     const link = urlFrontend(`/convite?token=${token}`);
     const email_enviado = await this.emailService.enviar({
       para: user.email,
-      assunto: 'Convite para a plataforma CSIS',
+      assunto: 'Convite para {{instancia}}',
       texto:
-        `Olá, ${user.nome}.\n\nVocê foi convidado(a) para a plataforma CSIS como ${user.papel_global}.\n` +
+        `Olá, ${user.nome}.\n\nVocê foi convidado(a) para a plataforma da {{instancia}} como ${NOME_PAPEL[user.papel_global as Papel] ?? user.papel_global}.\n` +
         `Crie sua senha pelo link abaixo (válido por 7 dias):\n\n${link}\n\n` +
         'Se você não esperava este convite, ignore esta mensagem.',
     });
@@ -381,7 +381,7 @@ export class AuthService {
     );
     await this.emailService.enviar({
       para: user.email,
-      assunto: 'Redefinição de senha — CSIS',
+      assunto: 'Redefinição de senha — {{instancia}}',
       texto:
         `Olá, ${user.nome}.\n\nPara criar uma nova senha, use o link abaixo (válido por 1 hora):\n\n` +
         `${urlFrontend(`/redefinir-senha?token=${token}`)}\n\n` +

@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut, ClipboardCheck } from "lucide-react";
+import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import type { PapelGlobal } from "@/lib/types";
@@ -54,8 +54,17 @@ const GROUPS: NavGroup[] = [
     roles: ["ADMIN", "LIDER"],
     items: [
       { to: "/recursos", label: "Arquivos da Empresa" },
-      { to: "/usuarios", label: "Gestão de Usuários" },
       { to: "/auditoria", label: "Auditoria Global" },
+    ],
+  },
+  {
+    label: "Pessoas",
+    icon: Users,
+    roles: ["ADMIN", "LIDER", "REVISOR"],
+    items: [
+      { to: "/usuarios", label: "Gestão de Usuários", roles: ["ADMIN", "LIDER"] },
+      { to: "/inscricoes", label: "Inscrições" },
+      { to: "/formulario-inscricao", label: "Formulário de Inscrição" },
     ],
   },
   {

@@ -43,8 +43,10 @@ export function cadastroAberto(): boolean {
   return process.env.CADASTRO_ABERTO !== 'false';
 }
 
-const MENSAGEM_ENVIADO =
+const MENSAGEM_COM_CONFIRMACAO =
   'Cadastro recebido. Enviamos um link de confirmação para o seu e-mail — depois de confirmar, a equipe analisa o pedido.';
+const MENSAGEM_SEM_CONFIRMACAO =
+  'Cadastro recebido. A equipe vai analisar o pedido e liberar o acesso — tente entrar mais tarde com seu e-mail e senha.';
 
 @Injectable()
 export class InscricaoService {
@@ -215,7 +217,7 @@ export class InscricaoService {
         );
       }
       // Robô: responde como se tivesse dado certo, sem gravar nada.
-      if (dto.site) return { ok: true, mensagem: MENSAGEM_ENVIADO };
+      if (dto.site) return { ok: true, mensagem: this.mensagemEnviado() };
 
       let respostas: Record<string, unknown> = {};
       try {
@@ -266,13 +268,13 @@ export class InscricaoService {
         // do e-mail fica sabendo da tentativa.
         await this.emailService.enviar({
           para: email,
-          assunto: 'Tentativa de cadastro na CSIS',
+          assunto: 'Tentativa de cadastro — {{instancia}}',
           texto:
-            'Alguém tentou criar uma conta na plataforma CSIS com este e-mail, que já está cadastrado.\n\n' +
+            'Alguém tentou criar uma conta na plataforma da {{instancia}} com este e-mail, que já está cadastrado.\n\n' +
             `Se foi você e esqueceu a senha, use: ${urlFrontend('/esqueci-senha')}\n\n` +
             'Se não foi você, ignore esta mensagem.',
         });
-        return { ok: true, mensagem: MENSAGEM_ENVIADO };
+        return { ok: true, mensagem: this.mensagemEnviado() };
       }
 
       const anexosGravados = await this.gravarAnexos(anexosPorCampo);
@@ -283,7 +285,11 @@ export class InscricaoService {
             email,
             senha_hash: await bcrypt.hash(dto.senha, SALT_ROUNDS),
             papel_global: 'COLABORADOR',
-            situacao: 'AGUARDANDO_EMAIL',
+            // Sem envio de e-mail na instância, ninguém receberia o link de
+            // confirmação: a inscrição vai direto para a fila da equipe.
+            situacao: this.emailService.entregaEmails
+              ? 'AGUARDANDO_EMAIL'
+              : 'PENDENTE',
             inscricao: {
               create: {
                 respostas: registradas as unknown as Prisma.InputJsonValue,
@@ -322,13 +328,21 @@ export class InscricaoService {
           })),
         },
       );
-      await this.enviarConfirmacao(user.id, user.nome, user.email);
-      return { ok: true, mensagem: MENSAGEM_ENVIADO };
+      if (this.emailService.entregaEmails) {
+        await this.enviarConfirmacao(user.id, user.nome, user.email);
+      }
+      return { ok: true, mensagem: this.mensagemEnviado() };
     } finally {
       await Promise.all(
         arquivos.map((a) => unlink(a.path).catch(() => undefined)),
       );
     }
+  }
+
+  private mensagemEnviado() {
+    return this.emailService.entregaEmails
+      ? MENSAGEM_COM_CONFIRMACAO
+      : MENSAGEM_SEM_CONFIRMACAO;
   }
 
   private async gravarAnexos(anexos: Map<string, Express.Multer.File>) {
@@ -370,9 +384,9 @@ export class InscricaoService {
     );
     await this.emailService.enviar({
       para: email,
-      assunto: 'Confirme seu e-mail — CSIS',
+      assunto: 'Confirme seu e-mail — {{instancia}}',
       texto:
-        `Olá, ${nome}.\n\nRecebemos seu cadastro na plataforma CSIS. Confirme seu e-mail pelo link abaixo ` +
+        `Olá, ${nome}.\n\nRecebemos seu cadastro na plataforma da {{instancia}}. Confirme seu e-mail pelo link abaixo ` +
         `(válido por 48 horas):\n\n${urlFrontend(`/confirmar-email?token=${token}`)}\n\n` +
         'Depois disso, a equipe analisa o pedido e você recebe um aviso quando for aprovado.',
     });
@@ -473,7 +487,7 @@ export class InscricaoService {
     );
     await this.emailService.enviar({
       para: inscricao.user.email,
-      assunto: 'Cadastro aprovado — CSIS',
+      assunto: 'Cadastro aprovado — {{instancia}}',
       texto: `Olá, ${inscricao.user.nome}.\n\nSeu cadastro foi aprovado. Você já pode entrar: ${urlFrontend('/login')}`,
     });
     return { ok: true };
@@ -516,7 +530,7 @@ export class InscricaoService {
     // A observação é interna (fica para a equipe); o candidato recebe só o aviso.
     await this.emailService.enviar({
       para: inscricao.user.email,
-      assunto: 'Sobre seu cadastro na CSIS',
+      assunto: 'Sobre seu cadastro — {{instancia}}',
       texto: `Olá, ${inscricao.user.nome}.\n\nNo momento, seu cadastro não foi aprovado. Obrigado pelo interesse.`,
     });
     return { ok: true };

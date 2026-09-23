@@ -141,9 +141,14 @@ export class AcessoService {
 
   async obterCompartilhamento(tipo: TipoRecursoRestringivel, id: string) {
     const campo = CAMPO_FK[tipo];
+    // Pasta não tem `publico` (herda a visibilidade do Projeto/Área em que está).
     const recurso = await (this.prisma[tipo] as any).findUnique({
       where: { id },
-      select: { id: true, restrito: true },
+      select: {
+        id: true,
+        restrito: true,
+        ...(tipo === 'pasta' ? {} : { publico: true }),
+      },
     });
     if (!recurso)
       throw new NotFoundException(`${NOME_ENTIDADE[tipo]} não encontrado(a).`);
@@ -158,6 +163,7 @@ export class AcessoService {
 
     return {
       restrito: recurso.restrito,
+      publico: tipo === 'pasta' ? false : Boolean(recurso.publico),
       listas: acessos.filter((a) => a.lista).map((a) => a.lista!),
       usuarios: acessos.filter((a) => a.user).map((a) => a.user!),
     };
@@ -166,14 +172,29 @@ export class AcessoService {
   async definirCompartilhamento(
     tipo: TipoRecursoRestringivel,
     id: string,
-    dto: { restrito: boolean; listaIds: string[]; userIds: string[] },
+    dto: {
+      restrito: boolean;
+      publico?: boolean;
+      listaIds: string[];
+      userIds: string[];
+    },
     autorId: string,
   ) {
     const campo = CAMPO_FK[tipo];
+    const anterior = await this.obterCompartilhamento(tipo, id);
+    // Restrito e público ao mesmo tempo não faz sentido: restrito vence.
+    const publico = tipo === 'pasta' || dto.restrito ? undefined : dto.publico;
     const writes: any[] = [
       (this.prisma[tipo] as any).update({
         where: { id },
-        data: { restrito: dto.restrito },
+        data: {
+          restrito: dto.restrito,
+          ...(tipo === 'pasta'
+            ? {}
+            : {
+                publico: dto.restrito ? false : (publico ?? anterior.publico),
+              }),
+        },
       }),
       this.prisma.acessoRecurso.deleteMany({ where: { [campo]: id } }),
     ];
@@ -196,7 +217,12 @@ export class AcessoService {
       'ATUALIZAR_COMPARTILHAMENTO',
       NOME_ENTIDADE[tipo],
       id,
-      null,
+      {
+        restrito: anterior.restrito,
+        publico: anterior.publico,
+        listaIds: anterior.listas.map((l: { id: string }) => l.id),
+        userIds: anterior.usuarios.map((u: { id: string }) => u.id),
+      },
       dto,
     );
     return this.obterCompartilhamento(tipo, id);
