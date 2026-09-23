@@ -7,17 +7,21 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { EmailService } from './email.service';
+import { TokensService } from './tokens.service';
 import { Papel } from '../common/constants/papeis';
-import { RegisterDto } from './dto/register.dto';
+import { origensPermitidas } from '../configurar-app';
 import { LoginDto } from './dto/login.dto';
+import { ConvidarDto } from './dto/convidar.dto';
 import type { PayloadJwt } from './jwt.strategy';
 
-const SALT_ROUNDS = 10;
+export const SALT_ROUNDS = 10;
 const RECUPERACAO_VALIDADE_MS = 60 * 60 * 1000; // 1 hora
+const CONVITE_VALIDADE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 // Hash bcrypt de uma senha aleatória descartada — só existe para o login de
 // um e-mail inexistente gastar o mesmo tempo que o de um e-mail real.
 const HASH_FICTICIO = bcrypt.hashSync(
@@ -25,8 +29,30 @@ const HASH_FICTICIO = bcrypt.hashSync(
   SALT_ROUNDS,
 );
 
+export const SITUACOES = [
+  'ATIVO',
+  'CONVIDADO',
+  'AGUARDANDO_EMAIL',
+  'PENDENTE',
+  'RECUSADO',
+  'DESATIVADO',
+] as const;
+export type Situacao = (typeof SITUACOES)[number];
+
 export function normalizarEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/// Endereço público do frontend (primeira origem de FRONTEND_ORIGIN) — base
+/// dos links enviados por e-mail.
+export function urlFrontend(caminho: string): string {
+  return `${origensPermitidas()[0].replace(/\/$/, '')}${caminho}`;
+}
+
+/// Senha impossível de acertar, para contas que ainda não definiram a própria
+/// (convite pendente): ninguém entra até o link do convite ser usado.
+export function senhaInutilizavel(): Promise<string> {
+  return bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
 }
 
 @Injectable()
@@ -36,35 +62,37 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly auditoriaService: AuditoriaService,
     private readonly emailService: EmailService,
+    private readonly tokens: TokensService,
   ) {}
 
-  async register(
-    dto: RegisterDto,
+  // --- Convite -------------------------------------------------------------
+
+  /// A pessoa convidada recebe um link e cria a PRÓPRIA senha — ninguém (nem
+  /// o Admin) chega a conhecer a senha de outra pessoa, o que manteria aberta
+  /// a possibilidade de agir em nome dela na trilha de auditoria.
+  async convidar(
+    dto: ConvidarDto,
     solicitanteId: string,
     solicitantePapel: Papel,
   ) {
-    const email = normalizarEmail(dto.email);
-    const existente = await this.prisma.user.findUnique({ where: { email } });
-    if (existente) {
-      throw new ConflictException('Já existe um usuário com este e-mail.');
-    }
-
     if (dto.papelGlobal === 'ADMIN' && solicitantePapel !== 'ADMIN') {
       throw new ForbiddenException(
-        'Somente um Admin pode criar outra conta Admin.',
+        'Somente um Admin pode convidar outro Admin.',
       );
     }
-
-    const senha_hash = await bcrypt.hash(dto.senha, SALT_ROUNDS);
+    const email = normalizarEmail(dto.email);
+    if (await this.prisma.user.findUnique({ where: { email } })) {
+      throw new ConflictException('Já existe um usuário com este e-mail.');
+    }
     const user = await this.prisma.user.create({
       data: {
         nome: dto.nome,
         email,
-        senha_hash,
-        papel_global: dto.papelGlobal ?? 'COLABORADOR',
+        senha_hash: await senhaInutilizavel(),
+        papel_global: dto.papelGlobal,
+        situacao: 'CONVIDADO',
       },
     });
-
     await this.auditoriaService.registrar(
       solicitanteId,
       'CONVIDAR',
@@ -77,49 +105,105 @@ export class AuthService {
         papel_global: user.papel_global,
       },
     );
+    return {
+      usuario: this.paraPublico(user),
+      ...(await this.enviarConvite(user)),
+    };
+  }
 
+  async reenviarConvite(id: string, solicitanteId: string) {
+    const user = await this.buscarOuFalhar(id);
+    if (user.situacao !== 'CONVIDADO') {
+      throw new ConflictException('Este usuário já aceitou o convite.');
+    }
+    await this.auditoriaService.registrar(
+      solicitanteId,
+      'REENVIAR_CONVITE',
+      'User',
+      id,
+      null,
+      null,
+    );
+    return {
+      usuario: this.paraPublico(user),
+      ...(await this.enviarConvite(user)),
+    };
+  }
+
+  /// Sem SMTP configurado o link volta na resposta, para o Admin copiar e
+  /// mandar por outro canal (Telas_Interface_Plataforma_CSIS.md, "Convidar
+  /// Usuário"). Com SMTP, o link só vai por e-mail.
+  private async enviarConvite(user: User) {
+    const token = await this.tokens.emitir(
+      user.id,
+      'CONVITE',
+      CONVITE_VALIDADE_MS,
+    );
+    const link = urlFrontend(`/convite?token=${token}`);
+    const email_enviado = await this.emailService.enviar({
+      para: user.email,
+      assunto: 'Convite para a plataforma CSIS',
+      texto:
+        `Olá, ${user.nome}.\n\nVocê foi convidado(a) para a plataforma CSIS como ${user.papel_global}.\n` +
+        `Crie sua senha pelo link abaixo (válido por 7 dias):\n\n${link}\n\n` +
+        'Se você não esperava este convite, ignore esta mensagem.',
+    });
+    return email_enviado ? { email_enviado } : { email_enviado, link };
+  }
+
+  async previaConvite(token: string) {
+    const registro = await this.tokens.consultar(token, 'CONVITE');
+    const user = await this.buscarOuFalhar(registro.user_id);
+    return {
+      nome: user.nome,
+      email: user.email,
+      papel_global: user.papel_global,
+    };
+  }
+
+  async aceitarConvite(token: string, senha: string) {
+    const userId = await this.tokens.consumir(token, 'CONVITE');
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        senha_hash: await bcrypt.hash(senha, SALT_ROUNDS),
+        situacao: 'ATIVO',
+        sessao_versao: { increment: 1 },
+      },
+    });
+    await this.auditoriaService.registrar(
+      userId,
+      'ACEITAR_CONVITE',
+      'User',
+      userId,
+      null,
+      null,
+    );
     return this.paraPublico(user);
   }
 
-  async atualizarPapel(
-    id: string,
-    novoPapel: Papel,
-    solicitanteId: string,
-    solicitantePapel: Papel,
-  ) {
-    if (id === solicitanteId) {
-      throw new ForbiddenException(
-        'Você não pode alterar o próprio papel — peça para outro Admin/Coordenador fazer isso.',
-      );
-    }
-    if (novoPapel === 'ADMIN' && solicitantePapel !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Somente um Admin pode promover alguém a Admin.',
-      );
-    }
+  // --- Confirmação de e-mail (cadastro público) ----------------------------
 
-    const anterior = await this.buscarOuFalhar(id);
-    if (anterior.papel_global === 'ADMIN' && solicitantePapel !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Somente um Admin pode alterar o papel de outro Admin.',
-      );
-    }
-    const atualizado = await this.prisma.user.update({
-      where: { id },
-      data: { papel_global: novoPapel },
+  async confirmarEmail(token: string) {
+    const userId = await this.tokens.consumir(token, 'CONFIRMACAO_EMAIL');
+    const { count } = await this.prisma.user.updateMany({
+      where: { id: userId, situacao: 'AGUARDANDO_EMAIL' },
+      data: { situacao: 'PENDENTE' },
     });
-
-    await this.auditoriaService.registrar(
-      solicitanteId,
-      'ALTERAR_PAPEL',
-      'User',
-      id,
-      { papel_global: anterior.papel_global },
-      { papel_global: novoPapel },
-    );
-
-    return this.paraPublico(atualizado);
+    if (count > 0) {
+      await this.auditoriaService.registrar(
+        userId,
+        'CONFIRMAR_EMAIL',
+        'User',
+        userId,
+        null,
+        null,
+      );
+    }
+    return { ok: true };
   }
+
+  // --- Login e sessão ---------------------------------------------------------
 
   async validarCredenciais(email: string, senha: string) {
     const user = await this.prisma.user.findUnique({
@@ -132,28 +216,36 @@ export class AuthService {
       senha,
       user?.senha_hash ?? HASH_FICTICIO,
     );
-    if (!user || !senhaValida || !user.ativo) {
+    if (!user || !senhaValida) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
-    return user;
+    // Com a senha certa, dá pra dizer o que falta — ajuda quem acabou de se
+    // cadastrar sem revelar nada a quem não sabe a senha.
+    switch (user.situacao as Situacao) {
+      case 'ATIVO':
+        return user;
+      case 'AGUARDANDO_EMAIL':
+        throw new ForbiddenException(
+          'Confirme seu e-mail pelo link que enviamos para concluir o cadastro.',
+        );
+      case 'PENDENTE':
+        throw new ForbiddenException(
+          'Seu cadastro foi recebido e aguarda aprovação da equipe.',
+        );
+      default:
+        throw new UnauthorizedException('Credenciais inválidas.');
+    }
   }
 
   async login(dto: LoginDto) {
     const user = await this.validarCredenciais(dto.email, dto.senha);
-
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { ultimo_acesso: new Date() },
+    });
     const payload: PayloadJwt = { sub: user.id, v: user.sessao_versao };
     const token = await this.jwtService.signAsync(payload);
-
     return { token, user: this.paraPublico(user) };
-  }
-
-  /// Invalida no servidor todas as sessões abertas do usuário (o token
-  /// carrega a versão de sessão; ver JwtStrategy).
-  async encerrarSessoes(userId: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { sessao_versao: { increment: 1 } },
-    });
   }
 
   /// Logout de verdade: além de o controller apagar o cookie, a versão de
@@ -180,6 +272,45 @@ export class AuthService {
     }
   }
 
+  // --- Gestão de usuários ------------------------------------------------------
+
+  async atualizarPapel(
+    id: string,
+    novoPapel: Papel,
+    solicitanteId: string,
+    solicitantePapel: Papel,
+  ) {
+    if (id === solicitanteId) {
+      throw new ForbiddenException(
+        'Você não pode alterar o próprio papel — peça para outro Admin/Coordenador fazer isso.',
+      );
+    }
+    if (novoPapel === 'ADMIN' && solicitantePapel !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Somente um Admin pode promover alguém a Admin.',
+      );
+    }
+    const anterior = await this.buscarOuFalhar(id);
+    if (anterior.papel_global === 'ADMIN' && solicitantePapel !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Somente um Admin pode alterar o papel de outro Admin.',
+      );
+    }
+    const atualizado = await this.prisma.user.update({
+      where: { id },
+      data: { papel_global: novoPapel },
+    });
+    await this.auditoriaService.registrar(
+      solicitanteId,
+      'ALTERAR_PAPEL',
+      'User',
+      id,
+      { papel_global: anterior.papel_global },
+      { papel_global: novoPapel },
+    );
+    return this.paraPublico(atualizado);
+  }
+
   async definirAtivo(
     id: string,
     ativo: boolean,
@@ -195,18 +326,24 @@ export class AuthService {
         'Somente um Admin pode desativar outro Admin.',
       );
     }
+    if (anterior.situacao !== 'ATIVO' && anterior.situacao !== 'DESATIVADO') {
+      throw new ConflictException(
+        `Não é possível ${ativo ? 'reativar' : 'desativar'} um usuário na situação ${anterior.situacao}.`,
+      );
+    }
+    const situacao: Situacao = ativo ? 'ATIVO' : 'DESATIVADO';
     const atualizado = await this.prisma.user.update({
       where: { id },
       // Desativar também derruba as sessões abertas na hora.
-      data: { ativo, ...(ativo ? {} : { sessao_versao: { increment: 1 } }) },
+      data: { situacao, ...(ativo ? {} : { sessao_versao: { increment: 1 } }) },
     });
     await this.auditoriaService.registrar(
       solicitanteId,
       ativo ? 'REATIVAR_USUARIO' : 'DESATIVAR_USUARIO',
       'User',
       id,
-      { ativo: anterior.ativo },
-      { ativo },
+      { situacao: anterior.situacao },
+      { situacao },
     );
     return this.paraPublico(atualizado);
   }
@@ -218,10 +355,7 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-    });
-    return this.paraPublico(user);
+    return this.paraPublico(await this.buscarOuFalhar(userId));
   }
 
   async listarUsuarios() {
@@ -229,32 +363,30 @@ export class AuthService {
     return users.map((user) => this.paraPublico(user));
   }
 
+  // --- Recuperação de senha ----------------------------------------------------
+
   async solicitarRecuperacaoSenha(email: string): Promise<{ ok: true }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizarEmail(email) },
     });
     // Sempre retorna sucesso genérico, exista ou não o usuário — evita que
     // este endpoint seja usado pra descobrir quais emails têm conta.
-    if (!user || !user.ativo) {
+    if (!user || user.situacao !== 'ATIVO') {
       return { ok: true };
     }
-
-    const tokenPlano = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(tokenPlano).digest('hex');
-
-    await this.prisma.tokenRecuperacaoSenha.create({
-      data: {
-        user_id: user.id,
-        token_hash: tokenHash,
-        expira_em: new Date(Date.now() + RECUPERACAO_VALIDADE_MS),
-      },
+    const token = await this.tokens.emitir(
+      user.id,
+      'RECUPERACAO',
+      RECUPERACAO_VALIDADE_MS,
+    );
+    await this.emailService.enviar({
+      para: user.email,
+      assunto: 'Redefinição de senha — CSIS',
+      texto:
+        `Olá, ${user.nome}.\n\nPara criar uma nova senha, use o link abaixo (válido por 1 hora):\n\n` +
+        `${urlFrontend(`/redefinir-senha?token=${token}`)}\n\n` +
+        'Se não foi você que pediu, ignore esta mensagem — sua senha continua a mesma.',
     });
-
-    const frontendOrigin =
-      process.env.FRONTEND_ORIGIN ?? 'http://localhost:5000';
-    const link = `${frontendOrigin}/?token=${tokenPlano}`;
-    await this.emailService.enviarEmailRedefinicaoSenha(user.email, link);
-
     await this.auditoriaService.registrar(
       user.id,
       'SOLICITAR_RECUPERACAO_SENHA',
@@ -263,67 +395,44 @@ export class AuthService {
       null,
       null,
     );
-
     return { ok: true };
   }
 
   async redefinirSenha(
-    tokenPlano: string,
+    token: string,
     novaSenha: string,
   ): Promise<{ ok: true }> {
-    const tokenHash = createHash('sha256').update(tokenPlano).digest('hex');
-    const registro = await this.prisma.tokenRecuperacaoSenha.findUnique({
-      where: { token_hash: tokenHash },
-    });
-
-    const valido =
-      registro && !registro.usado_em && registro.expira_em > new Date();
-    if (!valido) {
-      throw new UnauthorizedException('Token inválido ou expirado.');
-    }
-
-    const senha_hash = await bcrypt.hash(novaSenha, SALT_ROUNDS);
+    const userId = await this.tokens.consumir(token, 'RECUPERACAO');
     // Trocar a senha derruba todas as sessões abertas — se a conta tinha sido
     // invadida, o invasor sai junto.
     await this.prisma.user.update({
-      where: { id: registro.user_id },
-      data: { senha_hash, sessao_versao: { increment: 1 } },
+      where: { id: userId },
+      data: {
+        senha_hash: await bcrypt.hash(novaSenha, SALT_ROUNDS),
+        sessao_versao: { increment: 1 },
+      },
     });
-
-    // Invalida todos os tokens pendentes do usuário, não só o usado agora —
-    // um link antigo ainda não usado não deve continuar valendo.
-    await this.prisma.tokenRecuperacaoSenha.updateMany({
-      where: { user_id: registro.user_id, usado_em: null },
-      data: { usado_em: new Date() },
-    });
-
     await this.auditoriaService.registrar(
-      registro.user_id,
+      userId,
       'REDEFINIR_SENHA',
       'User',
-      registro.user_id,
+      userId,
       null,
       null,
     );
-
     return { ok: true };
   }
 
-  private paraPublico(user: {
-    id: string;
-    nome: string;
-    email: string;
-    papel_global: string;
-    criado_em: Date;
-    ativo: boolean;
-  }) {
+  paraPublico(user: User) {
     return {
       id: user.id,
       nome: user.nome,
       email: user.email,
       papel_global: user.papel_global,
       criado_em: user.criado_em,
-      ativo: user.ativo,
+      situacao: user.situacao,
+      ativo: user.situacao === 'ATIVO',
+      ultimo_acesso: user.ultimo_acesso,
     };
   }
 }

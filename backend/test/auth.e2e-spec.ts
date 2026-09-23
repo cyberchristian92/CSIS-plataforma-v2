@@ -6,6 +6,7 @@ import {
   criarUsuario,
   criarUsuarioLogado,
   encerrar,
+  ultimoEmail,
 } from './helpers';
 
 describe('Autenticação e sessão', () => {
@@ -111,7 +112,28 @@ describe('Autenticação e sessão', () => {
     const depois = await ctx.prisma.user.findUniqueOrThrow({
       where: { id: admin.id },
     });
-    expect(depois).toMatchObject({ papel_global: 'ADMIN', ativo: true });
+    expect(depois).toMatchObject({ papel_global: 'ADMIN', situacao: 'ATIVO' });
+  });
+
+  it('esqueci a senha: o link do e-mail leva à página de redefinição e troca a senha', async () => {
+    const colab = await criarUsuario(ctx, 'COLABORADOR');
+    const servidor = request(ctx.app);
+    await servidor
+      .post('/auth/esqueci-senha')
+      .send({ email: colab.email })
+      .expect(200);
+    const mensagem = ultimoEmail(colab.email);
+    // A página de redefinição do frontend é /redefinir-senha (antes o link
+    // apontava para "/", que exige login — o token se perdia no redirect).
+    expect(mensagem.texto).toMatch(/\/redefinir-senha\?token=[a-f0-9]+/);
+    await servidor
+      .post('/auth/redefinir-senha')
+      .send({ token: mensagem.token, novaSenha: 'SenhaNova9876' })
+      .expect(200);
+    await servidor
+      .post('/auth/login')
+      .send({ email: colab.email, senha: 'SenhaNova9876' })
+      .expect(200);
   });
 
   it('e-mail de login não diferencia maiúsculas', async () => {

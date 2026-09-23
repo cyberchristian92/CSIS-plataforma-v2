@@ -159,7 +159,7 @@ export class MissoesService {
   async atribuir(id: string, responsavelIds: string[], userId: string) {
     const anterior = await this.buscar(id);
     const existentes = await this.prisma.user.count({
-      where: { id: { in: responsavelIds }, ativo: true },
+      where: { id: { in: responsavelIds }, situacao: 'ATIVO' },
     });
     if (existentes !== new Set(responsavelIds).size) {
       throw new BadRequestException(

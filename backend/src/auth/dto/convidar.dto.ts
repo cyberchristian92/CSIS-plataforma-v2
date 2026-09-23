@@ -1,20 +1,16 @@
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator';
 import { PAPEIS } from '../../common/constants/papeis';
 import type { Papel } from '../../common/constants/papeis';
 
-export class RegisterDto {
+export class ConvidarDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   nome: string;
 
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(8)
-  senha: string;
-
-  @IsOptional()
   @IsIn(PAPEIS)
-  papelGlobal?: Papel;
+  papelGlobal: Papel;
 }

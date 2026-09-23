@@ -37,11 +37,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         id: true,
         email: true,
         papel_global: true,
-        ativo: true,
+        situacao: true,
         sessao_versao: true,
       },
     });
-    if (!user || !user.ativo || user.sessao_versao !== payload.v) {
+    if (
+      !user ||
+      user.situacao !== 'ATIVO' ||
+      user.sessao_versao !== payload.v
+    ) {
       throw new UnauthorizedException('Sessão expirada. Entre novamente.');
     }
     return {

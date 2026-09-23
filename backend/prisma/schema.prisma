@@ -33,28 +33,34 @@ datasource db {
 // ----------------------------------------------------------------------------
 
 model User {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   nome          String
-  email         String   @unique
+  email         String    @unique
   senha_hash    String
-  papel_global  String   @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
-  criado_em     DateTime @default(now())
-  // Desativar em vez de apagar: o usuário perde o acesso na hora, mas o
-  // nome dele continua nos registros de auditoria e nas entregas/revisões.
-  ativo         Boolean  @default(true)
+  papel_global  String    @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
+  criado_em     DateTime  @default(now())
+  // ATIVO, CONVIDADO (convite enviado, senha ainda não criada),
+  // AGUARDANDO_EMAIL (cadastro feito, e-mail não confirmado), PENDENTE
+  // (e-mail confirmado, aguardando aprovação), RECUSADO, DESATIVADO. Só
+  // ATIVO entra. Desativar em vez de apagar: o nome continua nos registros
+  // de auditoria e nas entregas/revisões.
+  situacao      String    @default("ATIVO")
+  ultimo_acesso DateTime?
   // Incrementado no logout, na troca de senha e na desativação. O JWT
   // carrega a versão vigente quando foi emitido — token com versão antiga
   // é recusado, então sair da conta invalida a sessão no servidor.
-  sessao_versao Int      @default(0)
+  sessao_versao Int       @default(0)
 
-  entregas            Entrega[]
-  revisoes            Revisao[]
-  documentos          Documento[]
-  comentarios         ComentarioMissao[]
-  permissoes          Permissao[]
-  logs                LogAuditoria[]
-  tokensRecuperacao   TokenRecuperacaoSenha[]
-  missoes_responsavel MissaoResponsavel[]
+  entregas             Entrega[]
+  revisoes             Revisao[]
+  documentos           Documento[]
+  comentarios          ComentarioMissao[]
+  permissoes           Permissao[]
+  logs                 LogAuditoria[]
+  tokensRecuperacao    TokenRecuperacaoSenha[]
+  inscricao            Inscricao?              @relation("InscricaoCandidato")
+  inscricoes_decididas Inscricao[]             @relation("InscricaoDecisor")
+  missoes_responsavel  MissaoResponsavel[]
 
   areas_criadas    Area[]
   projetos_criados Projeto[]
@@ -452,6 +458,9 @@ model ChecklistItem {
 model TokenRecuperacaoSenha {
   id         String    @id @default(uuid())
   user_id    String
+  // RECUPERACAO (esqueci a senha), CONVITE (criar a primeira senha) ou
+  // CONFIRMACAO_EMAIL (cadastro público). Um token só vale para o próprio tipo.
+  tipo       String    @default("RECUPERACAO")
   token_hash String    @unique
   expira_em  DateTime
   usado_em   DateTime?
@@ -511,4 +520,59 @@ model AcessoRecurso {
   projeto Projeto? @relation(fields: [projeto_id], references: [id], onDelete: Cascade)
   area    Area?    @relation(fields: [area_id], references: [id], onDelete: Cascade)
   pasta   Pasta?   @relation(fields: [pasta_id], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------------
+// Cadastro público com aprovação — o formulário é configurável pela equipe
+// (Admin, Coordenador e Revisor): o que se pede muda sem mexer no código.
+// ----------------------------------------------------------------------------
+
+model CampoInscricao {
+  id          String   @id @default(uuid())
+  rotulo      String
+  ajuda       String?
+  // TEXTO, TEXTO_LONGO, NUMERO, DATA, EMAIL, TELEFONE, URL, SELECAO,
+  // MULTIPLA, ARQUIVO, ACEITE
+  tipo        String
+  obrigatorio Boolean  @default(false)
+  opcoes      String[] @default([])
+  ordem       Int      @default(0)
+  // Campo removido do formulário é arquivado, não apagado: inscrições
+  // antigas continuam mostrando o que foi respondido nele.
+  arquivado   Boolean  @default(false)
+  criado_em   DateTime @default(now())
+
+  anexos AnexoInscricao[]
+}
+
+model Inscricao {
+  id              String    @id @default(uuid())
+  user_id         String    @unique
+  // Cópia de cada pergunta e resposta como estavam no envio:
+  // [{ campo_id, rotulo, tipo, valor }]. Editar o formulário depois não
+  // altera o que o candidato respondeu.
+  respostas       Json
+  criado_em       DateTime  @default(now())
+  decidido_por_id String?
+  decidido_em     DateTime?
+  observacao      String?   @db.Text
+
+  user         User             @relation("InscricaoCandidato", fields: [user_id], references: [id], onDelete: Cascade)
+  decidido_por User?            @relation("InscricaoDecisor", fields: [decidido_por_id], references: [id], onDelete: SetNull)
+  anexos       AnexoInscricao[]
+}
+
+model AnexoInscricao {
+  id           String   @id @default(uuid())
+  inscricao_id String
+  campo_id     String
+  nome         String
+  caminho      String
+  hash_sha256  String
+  tamanho      Int
+  tipo_mime    String
+  enviado_em   DateTime @default(now())
+
+  inscricao Inscricao      @relation(fields: [inscricao_id], references: [id], onDelete: Cascade)
+  campo     CampoInscricao @relation(fields: [campo_id], references: [id])
 }
