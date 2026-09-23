@@ -71,6 +71,11 @@ describe('Visibilidade padrão por papel', () => {
       projeto.id,
     ]);
     await aluno.agente.get(`/projetos/${outro.id}`).expect(403);
+    // O detalhe da área também não pode listar os outros casos.
+    const detalheArea = await aluno.agente.get(`/areas/${area.id}`).expect(200);
+    expect(detalheArea.body.projetos.map((p: { id: string }) => p.id)).toEqual([
+      projeto.id,
+    ]);
   });
 
   it('colaborador incluído no compartilhamento vê o projeto', async () => {
