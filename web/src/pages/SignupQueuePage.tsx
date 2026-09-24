@@ -83,13 +83,10 @@ export default function SignupQueuePage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Inscrições</h1>
-        <p className="text-sm text-muted-foreground">
-          Cadastros feitos pela tela pública. As perguntas vêm do Formulário de Inscrição.
-        </p>
-      </div>
+    <div>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Cadastros feitos pela tela pública. Todos passam pela análise da equipe antes de o acesso ser liberado.
+      </p>
 
       <div className="mb-4 flex gap-1 border-b border-border">
         {ABAS.map((a) => (
