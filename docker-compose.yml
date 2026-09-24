@@ -34,31 +34,35 @@ services:
       SEED_ADMIN_NOME: ${SEED_ADMIN_NOME:-Administrador}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@csis.local}
       SEED_ADMIN_SENHA: ${SEED_ADMIN_SENHA:-TrocarSenha123}
-      # Nome do container do motor de laudo definido abaixo — precisa bater
-      # com `container_name: csis_v2_pandoc_engine` pra não colidir com o
-      # `csis_pandoc_engine` do repositório original quando os dois rodam ao
-      # mesmo tempo na mesma máquina.
-      PANDOC_ENGINE_CONTAINER: csis_v2_pandoc_engine
+      # Pasta compartilhada com o motor de laudo (serviço "pandoc" abaixo).
+      LAUDO_WORKDIR: /work
     volumes:
       - uploads:/app/uploads
+      - ${LAUDO_VOLUME:-laudos}:/work
     restart: unless-stopped
 
   # Motor de compilação do Laudo Pericial (Markdown + front-matter Eisvogel ->
-  # PDF). Container de vida longa (`sleep infinity`) controlado via `docker
-  # exec` pelo backend — evita o custo de subir um container novo a cada
-  # compilação. Build próprio porque o TeX Live do `pandoc/extra` não tem
-  # tudo que um laudo real usa (ex.: pdfpages) — aqui é TeX Live
-  # "scheme-full" + Pandoc + template eisvogel.latex.
+  # PDF): TeX Live "scheme-full" + Pandoc + template eisvogel.latex. Não é
+  # chamado pelo backend via `docker exec`: os dois só dividem a pasta
+  # /work, onde o backend deixa pedidos e o worker
+  # (backend/pandoc/worker.sh) devolve o PDF. Sem rede — um laudo não tem
+  # por que acessar a internet durante a compilação.
+  #
+  # A pasta é um volume nativo do Docker: é o que faz as permissões valerem
+  # e isola uma compilação das outras. Só no desenvolvimento, com o backend
+  # rodando fora do Docker, use LAUDO_VOLUME=./backend/laudo-workdir (no Mac
+  # o Docker Desktop ignora permissões em pastas do host — aceitável só ali).
   pandoc:
     build:
       context: ./backend/pandoc
       dockerfile: Dockerfile
     container_name: csis_v2_pandoc_engine
-    entrypoint: ["sleep", "infinity"]
+    network_mode: none
     volumes:
-      - ./backend/laudo-workdir:/work
+      - ${LAUDO_VOLUME:-laudos}:/work
     restart: unless-stopped
 
 volumes:
   pgdata:
   uploads:
+  laudos:

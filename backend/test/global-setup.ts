@@ -1,9 +1,10 @@
 import { execSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   DIR_EMAILS_TESTE,
+  DIR_LAUDO_TESTE,
   PORTA_TESTE,
   URL_API_TESTE,
   URL_BANCO_TESTE,
@@ -43,6 +44,8 @@ export default async function globalSetup() {
   execSync('npx nest build', { cwd: RAIZ, env: envBase, stdio: 'pipe' });
 
   rmSync(DIR_EMAILS_TESTE, { recursive: true, force: true });
+  rmSync(DIR_LAUDO_TESTE, { recursive: true, force: true });
+  mkdirSync(DIR_LAUDO_TESTE, { recursive: true });
   const servidor = spawn('node', ['dist/src/main'], {
     cwd: RAIZ,
     env: {
@@ -51,7 +54,7 @@ export default async function globalSetup() {
       PORT: String(PORTA_TESTE),
       JWT_SECRET: 'segredo-de-teste-com-mais-de-32-caracteres-0123456789',
       UPLOADS_DIR: mkdtempSync(join(tmpdir(), 'csis-uploads-teste-')),
-      LAUDO_WORKDIR: mkdtempSync(join(tmpdir(), 'csis-laudo-teste-')),
+      LAUDO_WORKDIR: DIR_LAUDO_TESTE,
       EMAIL_TRANSPORTE: 'arquivo',
       EMAIL_DIR: DIR_EMAILS_TESTE,
       CADASTRO_LIMITE_POR_HORA: '1000',

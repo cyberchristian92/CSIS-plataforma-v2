@@ -1,11 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { mkdir, writeFile, access, rm, copyFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, access, rm, copyFile, rename, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as esperar } from 'node:timers/promises';
 import { PrismaService } from '../prisma/prisma.service';
-
-const execFileAsync = promisify(execFile);
 
 // Lidas em runtime (dentro das funções que usam), não como constante de
 // módulo — nesse ponto do carregamento (import estático de app.module.ts
@@ -15,9 +12,19 @@ const execFileAsync = promisify(execFile);
 function laudoWorkdir(): string {
   return process.env.LAUDO_WORKDIR ?? join(process.cwd(), 'laudo-workdir');
 }
-function pandocContainer(): string {
-  return process.env.PANDOC_ENGINE_CONTAINER ?? 'csis_pandoc_engine';
+/// Quanto esperar pelo motor: o tempo de compilação do próprio worker
+/// (LAUDO_TIMEOUT_S, 120 s por padrão) mais uma folga para a fila.
+function prazoMs(): number {
+  const s = Number(process.env.LAUDO_TIMEOUT_S ?? 120);
+  return ((Number.isFinite(s) && s > 0 ? s : 120) + 30) * 1000;
 }
+
+const PRAZO_PARA_PEGAR_PEDIDO_MS = 10_000;
+
+const existe = (caminho: string) =>
+  access(caminho)
+    .then(() => true)
+    .catch(() => false);
 
 export interface ResultadoCompilacaoLaudo {
   sucesso: boolean;
@@ -64,6 +71,9 @@ export class LaudoCompilerService {
     const dir = join(laudoWorkdir(), documentoId);
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
+    // O worker roda com outro usuário ("laudo") e precisa gravar o PDF e
+    // limpar as fontes aqui dentro.
+    await chmod(dir, 0o777);
 
     await this.materializarArquivosDoProjeto(projetoId, dir);
     await writeFile(join(dir, 'laudo.md'), conteudoMarkdown, 'utf8');
@@ -83,47 +93,40 @@ export class LaudoCompilerService {
       });
     }
 
-    let log = '';
-    try {
-      await execFileAsync(
-        'docker',
-        [
-          'exec',
-          '-w',
-          `/work/${documentoId}`,
-          pandocContainer(),
-          'pandoc',
-          'laudo.md',
-          '-o',
-          'laudo.pdf',
-          '--template',
-          nomeTemplate,
-          '--pdf-engine=xelatex',
-        ],
-        { timeout: 120000 },
-      );
-    } catch (erro) {
-      const { stderr, stdout, killed } = erro as { stderr?: string; stdout?: string; killed?: boolean };
-      if (killed) {
-        // execFileAsync mata o processo ao bater o timeout — nesse caso
-        // stderr costuma vir vazio (o pandoc/xelatex nem chegou a escrever
-        // nada), então a mensagem genérica do Node ("Command failed: ...")
-        // sozinha não diz nada de útil pro usuário.
-        log = 'A compilação demorou demais e foi cancelada (mais de 2 minutos) — tente novamente; se persistir, o container "csis_pandoc_engine" pode estar sobrecarregado ou travado.';
-      } else {
-        log = stderr?.trim() || stdout?.trim() || (erro as Error)?.message || 'Falha desconhecida ao compilar o laudo.';
-      }
+    // Pedido para o motor de compilação (backend/pandoc/worker.sh), que
+    // vigia a pasta compartilhada. Gravado por último e via rename, para o
+    // worker nunca ver um pedido antes de laudo.md e anexos estarem prontos.
+    await writeFile(join(dir, 'pedido.tmp'), JSON.stringify({ template: nomeTemplate }), 'utf8');
+    await rename(join(dir, 'pedido.tmp'), join(dir, 'pedido.json'));
+
+    // O worker olha a fila a cada segundo: pedido intocado depois de alguns
+    // segundos quer dizer motor parado, e aí nem vale esperar o prazo todo.
+    const inicio = Date.now();
+    const limite = inicio + prazoMs();
+    let resultado: { sucesso: boolean } | null = null;
+    while (Date.now() < limite) {
+      resultado = await readFile(join(dir, 'resultado.json'), 'utf8')
+        .then((texto) => JSON.parse(texto) as { sucesso: boolean })
+        .catch(() => null);
+      if (resultado) break;
+      if (Date.now() - inicio > PRAZO_PARA_PEGAR_PEDIDO_MS && (await existe(join(dir, 'pedido.json')))) break;
+      await esperar(500);
     }
 
-    const sucesso = await access(join(dir, 'laudo.pdf'))
-      .then(() => true)
-      .catch(() => false);
-
-    if (!sucesso && !log) {
-      log = 'Não foi possível compilar: o motor de compilação (container Docker "csis_pandoc_engine") pode estar indisponível.';
+    if (!resultado) {
+      // Ninguém pegou (ou terminou) o pedido: o motor está parado. Tira o
+      // pedido da fila para ele não compilar uma versão velha mais tarde.
+      await rm(join(dir, 'pedido.json'), { force: true });
+      return {
+        sucesso: false,
+        log: 'O motor de geração de PDF não respondeu. Verifique se o serviço "pandoc" está rodando (docker compose up -d pandoc).',
+      };
     }
 
-    return { sucesso, log };
+    const log = await readFile(join(dir, 'laudo.log'), 'utf8').catch(() => '');
+    const sucesso = resultado.sucesso && (await existe(join(dir, 'laudo.pdf')));
+
+    return { sucesso, log: sucesso ? log : log.trim() || 'Falha desconhecida ao compilar o laudo.' };
   }
 
   caminhoPdf(documentoId: string): string {

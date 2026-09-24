@@ -11,5 +11,7 @@ export const PORTA_TESTE = Number(process.env.TEST_PORT ?? 3999);
 export const URL_API_TESTE = `http://127.0.0.1:${PORTA_TESTE}`;
 // O servidor de teste grava cada e-mail como JSON aqui (EMAIL_TRANSPORTE=arquivo).
 export const DIR_EMAILS_TESTE = join(tmpdir(), 'csis-emails-teste');
+// Fila do motor de laudo; nos testes quem responde é um worker falso.
+export const DIR_LAUDO_TESTE = join(tmpdir(), 'csis-laudo-teste');
 
 process.env.DATABASE_URL = URL_BANCO_TESTE;
