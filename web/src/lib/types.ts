@@ -188,6 +188,16 @@ export interface Arquivo {
   tamanho: number;
   tipo_mime: string;
   enviado_em: string;
+  enviado_por?: string;
+  enviado_por_nome?: string | null;
+}
+
+/// Uma entrada do histórico de um arquivo/documento (cadeia de custódia).
+export interface EventoHistorico {
+  id: string;
+  acao: string;
+  timestamp: string;
+  user: { id: string; nome: string } | null;
 }
 
 export interface LogAuditoria {
