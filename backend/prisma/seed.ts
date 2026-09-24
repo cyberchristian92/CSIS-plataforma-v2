@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ESTRUTURA_INICIAL_PROJETO } from '../src/projetos/estrutura-inicial';
 
 const SALT_ROUNDS = 10;
 
@@ -11,12 +12,16 @@ const SALT_ROUNDS = 10;
 /// alguém). Idempotente: não faz nada se já existir qualquer usuário, então
 /// rodar de novo num banco que já tem dados reais é seguro.
 async function main() {
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
 
   try {
     const totalUsuarios = await prisma.user.count();
     if (totalUsuarios > 0) {
-      console.log(`[seed] Banco já tem ${totalUsuarios} usuário(s) — nada a fazer.`);
+      console.log(
+        `[seed] Banco já tem ${totalUsuarios} usuário(s) — nada a fazer.`,
+      );
       return;
     }
 
@@ -28,12 +33,15 @@ async function main() {
     const admin = await prisma.user.create({
       data: { nome, email, senha_hash, papel_global: 'ADMIN' },
     });
-    console.log(`[seed] Usuário ADMIN criado: ${email} — troque a senha padrão depois do primeiro login.`);
+    console.log(
+      `[seed] Usuário ADMIN criado: ${email} — troque a senha padrão depois do primeiro login.`,
+    );
 
     const workspace = await prisma.workspace.create({
       data: {
         nome: 'Workspace de Exemplo',
-        descricao: 'Criado automaticamente no primeiro boot — pode apagar quando quiser.',
+        descricao:
+          'Criado automaticamente no primeiro boot — pode apagar quando quiser.',
         areas: {
           create: {
             nome: 'Perícia',
@@ -59,7 +67,9 @@ async function main() {
           },
         },
       },
-      include: { areas: { include: { projetos: { include: { colunas: true } } } } },
+      include: {
+        areas: { include: { projetos: { include: { colunas: true } } } },
+      },
     });
 
     const projetoExemplo = workspace.areas[0].projetos[0];
@@ -68,12 +78,28 @@ async function main() {
       data: {
         projeto_id: projetoExemplo.id,
         titulo: 'Missão de exemplo',
-        descricao: 'Edite ou apague — isso é só pra você não abrir o app numa tela vazia.',
+        descricao:
+          'Edite ou apague — isso é só pra você não abrir o app numa tela vazia.',
         status: 'PENDENTE',
         coluna_id: primeiraColuna?.id,
         responsaveis: { create: { user_id: admin.id } },
       },
     });
+    // Mesma estrutura inicial de qualquer projeto novo (Material →
+    // Processamento → Produção, cada pasta com seu Leia-me).
+    for (const { pasta: nome, leiame } of ESTRUTURA_INICIAL_PROJETO) {
+      const pasta = await prisma.pasta.create({
+        data: { projeto_id: projetoExemplo.id, nome, criado_por_id: admin.id },
+      });
+      await prisma.documento.create({
+        data: {
+          projeto_id: projetoExemplo.id,
+          pasta_id: pasta.id,
+          autor_id: admin.id,
+          conteudo: leiame,
+        },
+      });
+    }
     console.log('[seed] Workspace de exemplo criado.');
   } finally {
     await prisma.$disconnect();

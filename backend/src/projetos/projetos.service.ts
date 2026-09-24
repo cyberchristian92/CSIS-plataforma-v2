@@ -5,10 +5,13 @@ import { EscopoService } from '../acesso/escopo.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import {
+  EVT_CONTEUDO_ALTERADO,
   EVT_CONTEUDO_REMOVIDO,
   EVT_HIERARQUIA_ALTERADA,
 } from '../integridade/integridade.events';
+import type { Documento, Pasta } from '@prisma/client';
 import { CreateProjetoDto } from './dto/create-projeto.dto';
+import { ESTRUTURA_INICIAL_PROJETO } from './estrutura-inicial';
 import { UpdateProjetoDto } from './dto/update-projeto.dto';
 
 @Injectable()
@@ -21,26 +24,50 @@ export class ProjetosService {
   ) {}
 
   async criar(areaId: string, dto: CreateProjetoDto, userId: string) {
-    const projeto = await this.prisma.projeto.create({
-      data: {
-        area_id: areaId,
-        nome: dto.nome,
-        descricao: dto.descricao,
-        prazo: dto.prazo ? new Date(dto.prazo) : undefined,
-        criado_por_id: userId,
-        // Board Kanban nasce com as mesmas 5 colunas que existiam como status
-        // antes — livres pra renomear/reordenar/excluir depois.
-        colunas: {
-          create: [
-            { nome: 'Pendente', ordem: 0 },
-            { nome: 'Em Andamento', ordem: 1 },
-            { nome: 'Em Revisão', ordem: 2 },
-            { nome: 'Aprovada', ordem: 3 },
-            { nome: 'Rejeitada', ordem: 4 },
-          ],
-        },
+    const { projeto, estrutura } = await this.prisma.$transaction(
+      async (tx) => {
+        const projeto = await tx.projeto.create({
+          data: {
+            area_id: areaId,
+            nome: dto.nome,
+            descricao: dto.descricao,
+            prazo: dto.prazo ? new Date(dto.prazo) : undefined,
+            criado_por_id: userId,
+            // Board Kanban nasce com as mesmas 5 colunas que existiam como status
+            // antes — livres pra renomear/reordenar/excluir depois.
+            colunas: {
+              create: [
+                { nome: 'Pendente', ordem: 0 },
+                { nome: 'Em Andamento', ordem: 1 },
+                { nome: 'Em Revisão', ordem: 2 },
+                { nome: 'Aprovada', ordem: 3 },
+                { nome: 'Rejeitada', ordem: 4 },
+              ],
+            },
+          },
+        });
+        // Fluxo de trabalho padrão: Material → Processamento → Produção, cada
+        // pasta com um Leia-me explicando como usá-la (estrutura-inicial.ts).
+        // Na mesma transação: ou o projeto nasce completo, ou não nasce.
+        const estrutura: { pasta: Pasta; documento: Documento }[] = [];
+        for (const { pasta: nome, leiame } of ESTRUTURA_INICIAL_PROJETO) {
+          const pasta = await tx.pasta.create({
+            data: { projeto_id: projeto.id, nome, criado_por_id: userId },
+          });
+          const documento = await tx.documento.create({
+            data: {
+              projeto_id: projeto.id,
+              pasta_id: pasta.id,
+              autor_id: userId,
+              conteudo: leiame,
+            },
+          });
+          estrutura.push({ pasta, documento });
+        }
+        return { projeto, estrutura };
       },
-    });
+    );
+
     await this.auditoriaService.registrar(
       userId,
       'CRIAR',
@@ -49,6 +76,32 @@ export class ProjetosService {
       null,
       projeto,
     );
+    for (const { pasta, documento } of estrutura) {
+      await this.auditoriaService.registrar(
+        userId,
+        'CRIAR',
+        'Pasta',
+        pasta.id,
+        null,
+        pasta,
+      );
+      await this.auditoriaService.registrar(
+        userId,
+        'CRIAR',
+        'Documento',
+        documento.id,
+        null,
+        {
+          pasta_id: documento.pasta_id,
+          titulo: documento.conteudo.split('\n')[0],
+        },
+      );
+      this.eventos.emit(EVT_CONTEUDO_ALTERADO, {
+        tipo: 'documento',
+        id: documento.id,
+        userId,
+      });
+    }
     this.eventos.emit(EVT_HIERARQUIA_ALTERADA, {
       tipo: 'projeto',
       id: projeto.id,
