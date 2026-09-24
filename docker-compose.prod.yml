@@ -1,0 +1,103 @@
+# Instância de produção: um servidor só, tudo em Docker.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Passo a passo completo (Oracle Cloud grátis + DuckDNS): docs/hospedagem.md.
+# Diferenças para o docker-compose.yml de desenvolvimento: só o Caddy fica
+# exposto (80/443); banco, API e motor de PDF ficam na rede interna; senhas
+# vêm do .env.prod (o compose se recusa a subir sem elas).
+
+services:
+  caddy:
+    build:
+      context: ./web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMINIO: ${DOMINIO:?defina DOMINIO no .env.prod}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: csis_user
+      POSTGRES_PASSWORD: ${DB_SENHA:?defina DB_SENHA no .env.prod}
+      POSTGRES_DB: csis_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csis_user -d csis_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    env_file: .env.prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://csis_user:${DB_SENHA}@db:5432/csis_db?schema=public
+      FRONTEND_ORIGIN: https://${DOMINIO}
+      TRUST_PROXY: 1
+      UPLOADS_DIR: /app/uploads
+      LAUDO_WORKDIR: /work
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env.prod}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?defina SEED_ADMIN_EMAIL no .env.prod}
+      SEED_ADMIN_SENHA: ${SEED_ADMIN_SENHA:?defina SEED_ADMIN_SENHA no .env.prod}
+    volumes:
+      - uploads:/app/uploads
+      - laudos:/work
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Motor do PDF do laudo — sem rede; conversa com o backend só pela fila em
+  # /work (ver backend/pandoc/worker.sh).
+  pandoc:
+    build:
+      context: ./backend/pandoc
+    network_mode: none
+    volumes:
+      - laudos:/work
+    restart: unless-stopped
+
+  # Cópia diária do banco em ./backups (mantém as 14 últimas). Os arquivos
+  # enviados ficam no volume "uploads" — ver "Backup" em docs/hospedagem.md.
+  backup:
+    image: postgres:15
+    environment:
+      PGPASSWORD: ${DB_SENHA}
+    volumes:
+      - ./backups:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U csis_user csis_db | gzip > /backups/csis-$$(date +%F).sql.gz
+          find /backups -name 'csis-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  laudos:
+  caddy_data:
+  caddy_config:

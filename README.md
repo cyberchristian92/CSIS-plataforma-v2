@@ -96,27 +96,28 @@ Para acompanhar os logs do backend: `docker compose logs -f backend`. Para desli
 `docker compose down` (os dados do banco continuam guardados no volume `pgdata` — some só com
 `docker compose down -v`).
 
-> **Limitação conhecida**: a geração de PDF roda um `docker exec` no container `pandoc` a partir
-> do próprio backend — isso só funciona quando o **backend roda fora do Docker** (seção
-> seguinte), porque o container do backend não tem acesso ao Docker do host (precisaria montar
-> `/var/run/docker.sock` e instalar o CLI do Docker na imagem, o que ainda não foi feito).
-> Rodando com `docker compose up`, todo o resto funciona normalmente — só o botão "Gerar PDF" vai
-> falhar.
->
-> **No Windows, suba o backend a partir do PowerShell/cmd, não do Git Bash**: já foi observado o
-> `docker exec` falhar silenciosamente (erro genérico "Command failed", sem stderr/stdout) quando
-> o processo do `npm run start:dev` é iniciado dentro de uma sessão Git Bash/MSYS — o mesmo
-> comando funciona normalmente rodado à mão no PowerShell. Causa raiz não confirmada (suspeita:
-> diferença de `PATH`/resolução do binário `docker` entre os dois shells), mas reiniciar o
-> backend a partir do PowerShell resolve.
+A primeira subida demora mais: o motor de PDF (serviço `pandoc`) baixa ~5 GB de TeX Live.
+
+## Hospedar na internet (grátis)
+
+Um servidor da Oracle Cloud "Always Free" + endereço gratuito do DuckDNS + HTTPS automático:
+passo a passo em **[docs/hospedagem.md](docs/hospedagem.md)**. No servidor, tudo se resume a:
+
+```bash
+git clone https://github.com/cyberchristian92/CSIS-plataforma-v2.git
+cd CSIS-plataforma-v2
+bash deploy/instalar.sh
+```
 
 ## Rodando sem Docker (desenvolvimento)
 
 Útil se você quer editar o backend com hot-reload em vez de reconstruir a imagem a cada mudança.
 
 ```bash
-# Banco de dados (ainda via Docker, só o Postgres)
-docker compose up -d db
+# Banco de dados e motor de PDF (ainda via Docker). LAUDO_VOLUME faz o motor
+# enxergar a pasta que o backend usa fora do Docker.
+echo "LAUDO_VOLUME=./backend/laudo-workdir" >> .env
+docker compose up -d db pandoc
 
 # Backend
 cd backend

@@ -1,0 +1,25 @@
+# Porta de entrada da instância: HTTPS automático (Let's Encrypt), o site
+# (build do web/) e a API em /api — o mesmo caminho que o Vite usa no
+# desenvolvimento, então o frontend não muda nada entre os dois.
+{$DOMINIO} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options SAMEORIGIN
+		-Server
+	}
+
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		root * /srv
+		# Rotas do React Router (/projetos/..., /convite...) caem no index.html.
+		try_files {path} /index.html
+		file_server
+	}
+}
