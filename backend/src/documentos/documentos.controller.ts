@@ -112,6 +112,12 @@ export class DocumentosController {
     });
   }
 
+  @Get('documentos/:id/historico')
+  @EscopoParam('documento')
+  historico(@Param('id') id: string) {
+    return this.documentosService.historico(id);
+  }
+
   @Get('documentos/:id')
   @EscopoParam('documento')
   buscar(@Param('id') id: string) {

@@ -81,15 +81,23 @@ export class PastasService {
     return pasta;
   }
 
+  /// `todas`: a árvore inteira do escopo (busca e caminho no explorador), em
+  /// vez de só os filhos de `pastaPaiId`.
   async listar(
     escopo: EscopoPasta,
     user: AuthenticatedUser,
     pastaPaiId?: string,
+    todas = false,
   ) {
     const pastas = await this.prisma.pasta.findMany({
       where: {
         ...escopo,
-        pasta_pai_id: pastaPaiId && pastaPaiId !== 'raiz' ? pastaPaiId : null,
+        ...(todas
+          ? {}
+          : {
+              pasta_pai_id:
+                pastaPaiId && pastaPaiId !== 'raiz' ? pastaPaiId : null,
+            }),
       },
       orderBy: { nome: 'asc' },
     });
