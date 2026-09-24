@@ -199,6 +199,9 @@ export const api = {
     listarPorEntrega: (entregaId: string) => get<Revisao[]>(`/entregas/${entregaId}/revisoes`),
     criar: (entregaId: string, status: "APROVADO" | "REJEITADO", comentario?: string) =>
       post<Revisao>(`/entregas/${entregaId}/revisoes`, { status, comentario }),
+    // Exceção: quem executou a missão aprova a própria entrega, com justificativa.
+    autoaprovar: (entregaId: string, justificativa: string) =>
+      post<Revisao>(`/entregas/${entregaId}/revisoes`, { status: "APROVADO", autoaprovacao: true, justificativa }),
   },
 
   comentarios: {

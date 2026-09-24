@@ -8,6 +8,7 @@ import { Avatar } from "./ui/avatar";
 import { useConfirmDialog } from "./ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { BotaoAutoaprovar } from "./Autoaprovacao";
 import { cn, formatDate, formatDateOnly } from "@/lib/utils";
 import { LABEL_PALETTE, STATUS_COLORS, STATUS_LABELS } from "@/lib/theme-constants";
 import type { User } from "@/lib/types";
@@ -251,7 +252,9 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
 
   const ultimaEntrega = entregas?.[0];
   const podeAprovarRejeitar = ultimaEntrega?.status === "EM_REVISAO" && missao.status === "EM_REVISAO";
-  const ehPropriaEntrega = !!ultimaEntrega && ultimaEntrega.autor_id === user?.id;
+  // Quem executou (autor da entrega ou responsável pela missão) não revisa
+  // pelo caminho normal — só pela autoaprovação excepcional (TCC v4).
+  const ehPropriaEntrega = (!!ultimaEntrega && ultimaEntrega.autor_id === user?.id) || ehResponsavel;
   const missaoAtrasada =
     !!missao.prazo && new Date(missao.prazo) < new Date() && !["APROVADA", "REJEITADA"].includes(missao.status);
 
@@ -553,17 +556,27 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
             </Button>
           </div>
         )}
-        {podeAprovarRejeitar && (
+        {podeAprovarRejeitar && podeRevisar && ehPropriaEntrega && (
           <div className="mt-2 flex flex-col gap-1.5">
-            {ehPropriaEntrega && (
-              <p className="text-xs text-muted-foreground">
-                Você enviou esta entrega — por Segregação de Funções, outra pessoa precisa revisá-la.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Você executou esta missão — por Segregação de Funções, outra pessoa deve revisá-la.
+            </p>
+            <div>
+              <BotaoAutoaprovar
+                entregaId={ultimaEntrega.id}
+                onConcluido={() => {
+                  invalidarMissao();
+                  qc.invalidateQueries({ queryKey: ["entregas", missaoId] });
+                }}
+              />
+            </div>
+          </div>
+        )}
+        {podeAprovarRejeitar && podeRevisar && !ehPropriaEntrega && (
+          <div className="mt-2 flex flex-col gap-1.5">
             <div className="flex gap-2">
               <Button
                 size="sm"
-                disabled={ehPropriaEntrega}
                 onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "APROVADO" })}
               >
                 <Check className="h-3.5 w-3.5" /> Aprovar
@@ -571,7 +584,6 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
               <Button
                 size="sm"
                 variant="destructive"
-                disabled={ehPropriaEntrega}
                 onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "REJEITADO" })}
               >
                 <X className="h-3.5 w-3.5" /> Rejeitar
@@ -642,6 +654,11 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
                   <div key={rev.id} className="mt-1.5 border-t border-border pt-1.5 text-xs text-muted-foreground">
                     <span className="font-medium">{rev.revisor?.nome}</span> — {rev.status}
                     {rev.comentario && `: ${rev.comentario}`}
+                    {rev.autoaprovacao && (
+                      <p className="mt-1 rounded bg-status-in-review/10 px-2 py-1 text-status-in-review">
+                        Autoaprovação (sem revisão por outra pessoa){rev.justificativa && ` — “${rev.justificativa}”`}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

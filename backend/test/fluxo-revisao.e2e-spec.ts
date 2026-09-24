@@ -148,6 +148,81 @@ describe('Fluxo de entrega e revisão', () => {
       .expect(403);
   });
 
+  // TCC v4 (seções 4.2 e 8.3): em vez de trava absoluta, a autoaprovação é
+  // tolerada em caráter excepcional — com justificativa e registro imutável.
+  it('autoaprovação excepcional: exige justificativa e fica registrada em destaque', async () => {
+    const c = await cenario();
+    await ctx.prisma.user.update({
+      where: { id: c.especialista.user.id },
+      data: { papel_global: 'REVISOR' },
+    });
+    const entrega = await entregar(c);
+    const rota = `/entregas/${entrega.id}/revisoes`;
+
+    // Sem justificativa suficiente: recusado.
+    await c.especialista.agente
+      .post(rota)
+      .send({
+        status: 'APROVADO',
+        autoaprovacao: true,
+        justificativa: 'urgente',
+      })
+      .expect(400);
+    // Autoaprovação só serve para aprovar.
+    await c.especialista.agente
+      .post(rota)
+      .send({
+        status: 'REJEITADO',
+        autoaprovacao: true,
+        justificativa: 'Nenhum revisor disponível no prazo do processo.',
+      })
+      .expect(403);
+
+    const res = await c.especialista.agente
+      .post(rota)
+      .send({
+        status: 'APROVADO',
+        autoaprovacao: true,
+        justificativa: 'Nenhum revisor disponível no prazo do processo.',
+      })
+      .expect(201);
+    expect(res.body).toMatchObject({
+      autoaprovacao: true,
+      justificativa: 'Nenhum revisor disponível no prazo do processo.',
+    });
+    const missao = await ctx.prisma.missao.findUniqueOrThrow({
+      where: { id: c.missao.id },
+    });
+    expect(missao.status).toBe('APROVADA');
+    // Aparece no histórico da missão, marcada como autoaprovação.
+    const historico = await c.lider.agente
+      .get(`/missoes/${c.missao.id}/entregas`)
+      .expect(200);
+    expect(historico.body[0].revisoes).toEqual([
+      expect.objectContaining({ autoaprovacao: true, status: 'APROVADO' }),
+    ]);
+    const log = await ctx.prisma.logAuditoria.findFirst({
+      where: { acao: 'AUTOAPROVAR', entidade_id: entrega.id },
+    });
+    expect(log?.dados_novos).toMatchObject({
+      justificativa: 'Nenhum revisor disponível no prazo do processo.',
+    });
+  });
+
+  it('marcar "autoaprovação" sem ser executor da missão não muda nada (revisão normal)', async () => {
+    const c = await cenario();
+    const entrega = await entregar(c);
+    const res = await c.revisor.agente
+      .post(`/entregas/${entrega.id}/revisoes`)
+      .send({
+        status: 'APROVADO',
+        autoaprovacao: true,
+        justificativa: 'qualquer coisa aqui',
+      })
+      .expect(201);
+    expect(res.body.autoaprovacao).toBe(false);
+  });
+
   it('entrega já revisada não pode ser revisada de novo', async () => {
     const c = await cenario();
     const entrega = await entregar(c);

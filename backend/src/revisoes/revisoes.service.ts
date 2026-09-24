@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CreateRevisaoDto } from './dto/create-revisao.dto';
 
+const MIN_JUSTIFICATIVA = 15;
+
 @Injectable()
 export class RevisoesService {
   constructor(
@@ -31,18 +33,28 @@ export class RevisoesService {
         throw new NotFoundException('Entrega não encontrada.');
       }
 
-      // Segregation of Duties: quem executou a missão não avalia o resultado —
-      // nem o autor desta entrega, nem qualquer outro responsável pela missão
-      // (senão bastava um colega "entregar" pra que o responsável aprovasse o
-      // próprio trabalho).
-      const ehResponsavel = entrega.missao.responsaveis.some(
-        (r) => r.user_id === revisorId,
-      );
-      if (entrega.autor_id === revisorId || ehResponsavel) {
-        throw new ForbiddenException(
-          'Você não pode revisar uma entrega de missão pela qual é responsável (Segregation of Duties).',
-        );
+      // Segregation of Duties: quem executou a missão (o autor desta entrega
+      // ou qualquer responsável por ela) não a avalia pelo caminho normal.
+      // Exceção do TCC (v4, seções 4.2 e 8.3): em vez de uma trava absoluta,
+      // a autoaprovação é tolerada — só para aprovar, com justificativa, e
+      // registrada em destaque. A garantia passa da trava para a
+      // responsabilização pela trilha de auditoria.
+      const ehExecutor =
+        entrega.autor_id === revisorId ||
+        entrega.missao.responsaveis.some((r) => r.user_id === revisorId);
+      if (ehExecutor) {
+        if (!dto.autoaprovacao || dto.status !== 'APROVADO') {
+          throw new ForbiddenException(
+            'Você executou esta missão: outra pessoa deve revisá-la. Em caso excepcional (sem revisor disponível), use a autoaprovação com justificativa.',
+          );
+        }
+        if ((dto.justificativa?.trim().length ?? 0) < MIN_JUSTIFICATIVA) {
+          throw new BadRequestException(
+            `A autoaprovação exige uma justificativa de pelo menos ${MIN_JUSTIFICATIVA} caracteres.`,
+          );
+        }
       }
+      const autoaprovacao = ehExecutor;
 
       // Cada entrega é avaliada uma única vez, e só a que está aguardando
       // revisão — uma entrega antiga ou já avaliada não muda mais o status da
@@ -75,6 +87,8 @@ export class RevisoesService {
           revisor_id: revisorId,
           status: dto.status,
           comentario: dto.comentario,
+          autoaprovacao,
+          justificativa: autoaprovacao ? dto.justificativa!.trim() : null,
         },
       });
       return { revisao, entrega };
@@ -84,7 +98,7 @@ export class RevisoesService {
     const { missao, ...entregaAnterior } = entrega;
     await this.auditoriaService.registrar(
       revisorId,
-      'REVISAR',
+      revisao.autoaprovacao ? 'AUTOAPROVAR' : 'REVISAR',
       'Entrega',
       entregaId,
       entregaAnterior,
@@ -93,6 +107,9 @@ export class RevisoesService {
         entrega_status: statusEntrega,
         missao_status: statusMissao,
         comentario: dto.comentario ?? null,
+        ...(revisao.autoaprovacao
+          ? { justificativa: revisao.justificativa }
+          : {}),
       },
     );
 
