@@ -54,6 +54,26 @@ export class AuditoriaService {
   /// Usado pela exportação de projeto: toda a trilha de auditoria de um
   /// conjunto de entidades relacionadas (projeto, suas missões, entregas,
   /// arquivos, documentos, pastas), em ordem cronológica.
+  /// Histórico de um arquivo/documento para quem pode vê-lo (painel de
+  /// detalhes do explorador): a cadeia de custódia dele. CID_ATUALIZADO fica
+  /// de fora — é registro técnico do motor de integridade, não ação de alguém.
+  historico(entidade: string, entidadeId: string) {
+    return this.prisma.logAuditoria.findMany({
+      where: {
+        entidade,
+        entidade_id: entidadeId,
+        acao: { not: 'CID_ATUALIZADO' },
+      },
+      orderBy: { timestamp: 'asc' },
+      select: {
+        id: true,
+        acao: true,
+        timestamp: true,
+        user: { select: { id: true, nome: true } },
+      },
+    });
+  }
+
   listarPorEntidades(entidadeIds: string[]) {
     return this.prisma.logAuditoria.findMany({
       where: { entidade_id: { in: entidadeIds } },

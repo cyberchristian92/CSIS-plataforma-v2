@@ -69,3 +69,28 @@ export function nomeSeguroEmDisco(nome: string): string {
     .slice(-150);
   return limpo.length > 0 ? limpo : 'arquivo';
 }
+
+const IMAGENS_SEGURAS = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/bmp',
+]);
+const EXTENSOES_TEXTO = /\.(txt|log|md|csv|json|xml|ya?ml|ini|cfg|conf)$/i;
+
+/// Tipo com que o arquivo pode ser mostrado DENTRO do navegador sem risco
+/// de executar código no domínio da plataforma — ou null (só download).
+/// SVG e HTML ficam de fora de propósito (podem conter script); texto é
+/// sempre servido como text/plain, nunca pelo tipo declarado no upload.
+export function tipoSeguroParaVisualizar(arquivo: {
+  tipo_mime: string;
+  nome: string;
+}): string | null {
+  const mime = arquivo.tipo_mime.toLowerCase();
+  if (IMAGENS_SEGURAS.has(mime)) return mime;
+  if (mime === 'application/pdf') return 'application/pdf';
+  if (mime === 'text/plain' || EXTENSOES_TEXTO.test(arquivo.nome))
+    return 'text/plain; charset=utf-8';
+  return null;
+}

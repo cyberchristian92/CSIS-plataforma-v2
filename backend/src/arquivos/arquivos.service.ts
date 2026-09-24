@@ -184,7 +184,28 @@ export class ArquivosService {
       escopo,
       arquivos,
     );
-    return visiveis.map(paraPublico);
+    return this.comNomeDeQuemEnviou(visiveis.map(paraPublico));
+  }
+
+  /// `enviado_por` é um id solto (sem relação no schema): resolve os nomes em
+  /// uma consulta só, para a coluna "Enviado por" do explorador.
+  private async comNomeDeQuemEnviou<T extends { enviado_por: string }>(
+    arquivos: T[],
+  ): Promise<(T & { enviado_por_nome: string | null })[]> {
+    const ids = [...new Set(arquivos.map((a) => a.enviado_por))];
+    const usuarios = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, nome: true },
+    });
+    const nomes = new Map(usuarios.map((u) => [u.id, u.nome]));
+    return arquivos.map((a) => ({
+      ...a,
+      enviado_por_nome: nomes.get(a.enviado_por) ?? null,
+    }));
+  }
+
+  historico(id: string) {
+    return this.auditoriaService.historico('Arquivo', id);
   }
 
   private async buscarRegistro(id: string): Promise<Arquivo> {
@@ -195,8 +216,11 @@ export class ArquivosService {
     return arquivo;
   }
 
-  async buscar(id: string): Promise<ArquivoPublico> {
-    return paraPublico(await this.buscarRegistro(id));
+  async buscar(id: string) {
+    const [arquivo] = await this.comNomeDeQuemEnviou([
+      paraPublico(await this.buscarRegistro(id)),
+    ]);
+    return arquivo;
   }
 
   async verificarIntegridade(id: string) {
@@ -212,7 +236,9 @@ export class ArquivosService {
 
   /// Para download: confere o hash ANTES de servir — um arquivo adulterado
   /// em disco nunca sai da plataforma como se fosse a evidência original.
-  async prepararDownload(id: string, userId: string) {
+  /// `inline`: visualização no navegador (painel de detalhes) — registra
+  /// VISUALIZAR em vez de DOWNLOAD na trilha de custódia.
+  async prepararDownload(id: string, userId: string, inline = false) {
     const arquivo = await this.buscarRegistro(id);
     const existe = await access(arquivo.caminho)
       .then(() => true)
@@ -241,7 +267,7 @@ export class ArquivosService {
     }
     await this.auditoriaService.registrar(
       userId,
-      'DOWNLOAD',
+      inline ? 'VISUALIZAR' : 'DOWNLOAD',
       'Arquivo',
       id,
       null,

@@ -102,6 +102,10 @@ export class DocumentosService {
     return this.escopoService.filtrarPorPasta(user, escopo, documentos);
   }
 
+  historico(id: string) {
+    return this.auditoriaService.historico('Documento', id);
+  }
+
   async buscar(id: string) {
     const documento = await this.prisma.documento.findUnique({ where: { id } });
     if (!documento) {

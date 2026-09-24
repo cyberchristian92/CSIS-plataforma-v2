@@ -11,6 +11,7 @@ import {
   Res,
   UploadedFile,
   UseGuards,
+  UnsupportedMediaTypeException,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -23,7 +24,10 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { ArquivosService } from './arquivos.service';
 import { RenameArquivoDto } from './dto/rename-arquivo.dto';
 import { Escopo, EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
-import { opcoesUploadEmDisco } from './utils/armazenamento';
+import {
+  opcoesUploadEmDisco,
+  tipoSeguroParaVisualizar,
+} from './utils/armazenamento';
 
 const QUERY_PASTA = {
   tipo: 'pasta',
@@ -168,17 +172,51 @@ export class ArquivosController {
   @EscopoParam('arquivo')
   async download(
     @Param('id') id: string,
+    @Query('inline') inline: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
   ) {
-    const arquivo = await this.arquivosService.prepararDownload(id, user.id);
+    const visualizar = inline === '1' || inline === 'true';
+    // Arquivo enviado por usuário aberto no mesmo domínio da plataforma pode
+    // carregar código (HTML/SVG com script). Inline só para tipos que o
+    // navegador exibe sem executar nada; o resto só baixa, como anexo.
+    const tipoInline = visualizar
+      ? tipoSeguroParaVisualizar(await this.arquivosService.buscar(id))
+      : null;
+    if (visualizar && !tipoInline) {
+      throw new UnsupportedMediaTypeException(
+        'Este tipo de arquivo não pode ser visualizado aqui — baixe-o.',
+      );
+    }
+    const arquivo = await this.arquivosService.prepararDownload(
+      id,
+      user.id,
+      visualizar,
+    );
+    const nomeAscii = arquivo.nome.replace(/[^\x20-\x7e]|"/g, '_');
     res.set({
-      'Content-Type': arquivo.tipo_mime || 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${arquivo.nome.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(arquivo.nome)}`,
+      'Content-Type': tipoInline ?? 'application/octet-stream',
+      'Content-Disposition': `${visualizar ? 'inline' : 'attachment'}; filename="${nomeAscii}"; filename*=UTF-8''${encodeURIComponent(arquivo.nome)}`,
       'X-Hash-Sha256': arquivo.hash_sha256,
+      'X-Content-Type-Options': 'nosniff',
+      // Sandbox isola o conteúdo do domínio da plataforma. Exceção: PDF
+      // inline — o sandbox impede o visualizador do Chrome, que já roda o PDF
+      // isolado da página por conta própria.
+      ...(tipoInline === 'application/pdf'
+        ? {}
+        : {
+            'Content-Security-Policy':
+              "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+          }),
       'Access-Control-Expose-Headers': 'X-Hash-Sha256, Content-Disposition',
     });
     res.sendFile(arquivo.caminho);
+  }
+
+  @Get('arquivos/:id/historico')
+  @EscopoParam('arquivo')
+  historico(@Param('id') id: string) {
+    return this.arquivosService.historico(id);
   }
 
   @Patch('arquivos/:id')

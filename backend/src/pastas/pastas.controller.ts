@@ -43,11 +43,13 @@ export class PastasController {
     @Param('projetoId') projetoId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('pastaPaiId') pastaPaiId?: string,
+    @Query('todas') todas?: string,
   ) {
     return this.pastasService.listar(
       { projeto_id: projetoId },
       user,
       pastaPaiId,
+      todas === 'true',
     );
   }
 
@@ -73,11 +75,13 @@ export class PastasController {
     @Param('workspaceId') workspaceId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('pastaPaiId') pastaPaiId?: string,
+    @Query('todas') todas?: string,
   ) {
     return this.pastasService.listar(
       { workspace_id: workspaceId },
       user,
       pastaPaiId,
+      todas === 'true',
     );
   }
 
@@ -101,8 +105,14 @@ export class PastasController {
     @Param('areaId') areaId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('pastaPaiId') pastaPaiId?: string,
+    @Query('todas') todas?: string,
   ) {
-    return this.pastasService.listar({ area_id: areaId }, user, pastaPaiId);
+    return this.pastasService.listar(
+      { area_id: areaId },
+      user,
+      pastaPaiId,
+      todas === 'true',
+    );
   }
 
   @Patch('pastas/:id')
