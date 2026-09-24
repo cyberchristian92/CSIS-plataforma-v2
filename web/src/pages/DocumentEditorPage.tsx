@@ -216,7 +216,7 @@ export default function DocumentEditorPage() {
           className="h-full resize-none border-r border-border bg-card p-6 font-mono text-sm text-foreground focus:outline-none"
         />
         <div
-          className="prose prose-sm dark:prose-invert h-full max-w-none overflow-auto p-6"
+          className="prose prose-sm dark:prose-invert h-full max-w-none overflow-auto p-6 prose-code:before:content-none prose-code:after:content-none [&_li:has(>input[type=checkbox])]:list-none [&_li:has(>input[type=checkbox])]:-ml-5"
           dangerouslySetInnerHTML={{ __html: markdownToHtml(conteudo) }}
         />
       </div>
