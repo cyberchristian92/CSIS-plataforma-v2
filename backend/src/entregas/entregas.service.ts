@@ -75,7 +75,17 @@ export class EntregasService {
     return this.prisma.entrega.findMany({
       where: { missao_id: missaoId },
       orderBy: { criado_em: 'desc' },
-      include: { autor: { select: { id: true, nome: true, email: true } } },
+      include: {
+        autor: { select: { id: true, nome: true, email: true } },
+        // Histórico completo de avaliações de cada entrega (inclusive
+        // autoaprovações) — a missão guarda todas as revisões, não só o status.
+        revisoes: {
+          orderBy: { criado_em: 'asc' },
+          include: {
+            revisor: { select: { id: true, nome: true, email: true } },
+          },
+        },
+      },
     });
   }
 

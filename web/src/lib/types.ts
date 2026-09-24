@@ -197,6 +197,7 @@ export interface LogAuditoria {
   entidade: string;
   entidade_id: string;
   timestamp: string;
+  dados_novos?: Record<string, unknown> | null;
   user?: { id: string; nome: string; email: string } | null;
 }
 
@@ -238,6 +239,9 @@ export interface Revisao {
   status: RevisaoStatus;
   comentario: string | null;
   criado_em: string;
+  /// Quem executou a missão aprovou a própria entrega (exceção do TCC v4).
+  autoaprovacao: boolean;
+  justificativa: string | null;
   revisor?: { id: string; nome: string; email: string };
 }
 

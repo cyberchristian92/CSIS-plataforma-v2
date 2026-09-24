@@ -336,12 +336,17 @@ model Entrega {
 }
 
 model Revisao {
-  id         String   @id @default(uuid())
-  entrega_id String
-  revisor_id String
-  status     String // APROVADO, REJEITADO
-  comentario String?  @db.Text
-  criado_em  DateTime @default(now())
+  id            String   @id @default(uuid())
+  entrega_id    String
+  revisor_id    String
+  status        String // APROVADO, REJEITADO
+  comentario    String?  @db.Text
+  // Exceção prevista no TCC (v4, 4.2/8.3): quem executou a missão aprova a
+  // própria entrega por falta de revisor. Só com justificativa, e o registro
+  // fica em destaque na auditoria e no histórico da missão.
+  autoaprovacao Boolean  @default(false)
+  justificativa String?  @db.Text
+  criado_em     DateTime @default(now())
 
   entrega Entrega @relation(fields: [entrega_id], references: [id], onDelete: Cascade)
   revisor User    @relation(fields: [revisor_id], references: [id])

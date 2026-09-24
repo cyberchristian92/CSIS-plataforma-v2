@@ -179,7 +179,7 @@ export default function SignupQueuePage() {
                   )}
 
                   {i.user.situacao === "AGUARDANDO_EMAIL" && (
-                    <p className="mt-3 text-xs text-status-pending">
+                    <p className="mt-3 text-xs text-status-in-review">
                       Esta pessoa ainda não confirmou o e-mail. Aprovar mesmo assim só se a equipe já verificou quem ela é.
                     </p>
                   )}
