@@ -6,7 +6,9 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
+  ValidateIf,
   MinLength,
 } from 'class-validator';
 
@@ -57,4 +59,22 @@ export class OrdenarCamposDto {
   @IsArray()
   @IsString({ each: true })
   ids: string[];
+}
+
+export class ConfiguracaoInscricaoDto {
+  /// Link do formulário externo (Google Forms, Typeform...). null remove.
+  @IsOptional()
+  @ValidateIf((_, valor) => valor !== null)
+  @IsUrl(
+    { protocols: ['https', 'http'], require_protocol: true },
+    { message: 'O link precisa começar com https://.' },
+  )
+  @MaxLength(1000)
+  link_externo?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, valor) => valor !== null)
+  @IsString()
+  @MaxLength(2000)
+  instrucao_externa?: string | null;
 }

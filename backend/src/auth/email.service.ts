@@ -20,9 +20,9 @@ export interface MensagemEmail {
 ///             servidor da própria empresa...
 ///   log     — só registra no log (padrão sem SMTP_HOST; desenvolvimento).
 ///   arquivo — grava cada mensagem como JSON em EMAIL_DIR (testes e2e).
-type Transporte = 'smtp' | 'log' | 'arquivo';
+export type Transporte = 'smtp' | 'log' | 'arquivo';
 
-function transporteConfigurado(): Transporte {
+export function transporteConfigurado(): Transporte {
   const escolhido = process.env.EMAIL_TRANSPORTE as Transporte | undefined;
   if (escolhido === 'smtp' || escolhido === 'log' || escolhido === 'arquivo')
     return escolhido;

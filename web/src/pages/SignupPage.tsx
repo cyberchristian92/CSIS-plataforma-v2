@@ -5,6 +5,7 @@ import type { FormularioInscricao } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PaginaPublica } from "@/components/PaginaPublica";
+import { ExternalLink } from "lucide-react";
 
 type Campo = FormularioInscricao["campos"][number];
 type Valor = string | boolean | string[];
@@ -154,6 +155,28 @@ function CampoDinamico({
   }
 }
 
+/// Etapa complementar fora da plataforma (Google Forms, Typeform...), onde a
+/// equipe pergunta tudo o que quiser além do mínimo do cadastro.
+function FormularioExterno({ link, instrucao }: { link: string; instrucao: string | null }) {
+  return (
+    <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+      <p className="text-sm font-medium">Etapa complementar</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {instrucao || "Preencha também o formulário de análise."} Use <strong>o mesmo e-mail</strong> deste cadastro,
+        para a equipe juntar as duas partes.
+      </p>
+      <a
+        href={link}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        Abrir formulário de análise <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
+
 // Cadastro público: o que é perguntado vem do formulário configurado pela
 // equipe (Admin/Coordenador/Revisor, em "Formulário de Inscrição"). A conta
 // nasce pendente — só entra depois de confirmar o e-mail e ser aprovada.
@@ -201,6 +224,11 @@ export default function SignupPage() {
     return (
       <PaginaPublica titulo="Cadastro enviado">
         <p className="text-sm">{concluido}</p>
+        {formulario.data?.formulario_externo && (
+          <div className="mt-4">
+            <FormularioExterno {...formulario.data.formulario_externo} />
+          </div>
+        )}
       </PaginaPublica>
     );
   }
@@ -218,7 +246,7 @@ export default function SignupPage() {
   return (
     <PaginaPublica
       titulo="Criar conta"
-      subtitulo="A equipe analisa cada cadastro antes de liberar o acesso."
+      subtitulo="Todo cadastro é analisado pela equipe antes de o acesso ser liberado."
       largura="lg"
     >
       {formulario.isLoading && <p className="text-sm text-muted-foreground">Carregando formulário…</p>}
@@ -298,6 +326,8 @@ export default function SignupPage() {
               onChange={(e) => setArmadilha(e.target.value)}
             />
           </div>
+
+          {formulario.data.formulario_externo && <FormularioExterno {...formulario.data.formulario_externo} />}
 
           {erro && <p className="text-sm text-destructive">{erro}</p>}
           <Button type="submit" disabled={enviando} className="h-11">

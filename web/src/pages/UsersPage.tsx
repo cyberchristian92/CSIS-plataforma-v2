@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SituacaoBadge } from "@/components/SituacaoUsuario";
+import { NOME_PAPEL } from "@/lib/papeis";
 
 const PAPEIS: PapelGlobal[] = ["ADMIN", "LIDER", "REVISOR", "COLABORADOR"];
 
@@ -98,8 +99,8 @@ export default function UsersPage() {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[56rem] text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-4 py-3 font-medium">Usuário</th>
@@ -113,7 +114,7 @@ export default function UsersPage() {
           <tbody className="divide-y divide-border">
             {usuarios?.map((u) => (
               <tr key={u.id} className="hover:bg-accent/50">
-                <td className="flex items-center gap-2 px-4 py-3">
+                <td className="flex items-center gap-2 whitespace-nowrap px-4 py-3">
                   <Avatar nome={u.nome} />
                   {u.nome}
                 </td>
@@ -121,7 +122,7 @@ export default function UsersPage() {
                 <td className="px-4 py-3">
                   {!podeGerenciar(u) ? (
                     <span className="text-xs text-muted-foreground">
-                      {u.papel_global}
+                      {NOME_PAPEL[u.papel_global] ?? u.papel_global}
                       {u.id === eu?.id && " (você)"}
                     </span>
                   ) : (
@@ -132,7 +133,7 @@ export default function UsersPage() {
                     >
                       {papeisPermitidos.map((p) => (
                         <option key={p} value={p}>
-                          {p}
+                          {NOME_PAPEL[p]}
                         </option>
                       ))}
                     </select>
@@ -142,7 +143,7 @@ export default function UsersPage() {
                   <SituacaoBadge situacao={u.situacao} />
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{formatarData(u.ultimo_acesso)}</td>
-                <td className="px-4 py-3 text-right">
+                <td className="whitespace-nowrap px-4 py-3 text-right">
                   {podeGerenciar(u) && u.situacao === "CONVIDADO" && (
                     <Button variant="ghost" size="sm" disabled={reenviar.isPending} onClick={() => reenviar.mutate(u.id)}>
                       <Mail className="h-3.5 w-3.5" /> Reenviar convite
@@ -211,7 +212,7 @@ export default function UsersPage() {
                 >
                   {papeisPermitidos.map((p) => (
                     <option key={p} value={p}>
-                      {p}
+                      {NOME_PAPEL[p]}
                     </option>
                   ))}
                 </select>

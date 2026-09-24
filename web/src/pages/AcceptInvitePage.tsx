@@ -5,13 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PaginaPublica } from "@/components/PaginaPublica";
-
-const NOME_PAPEL: Record<string, string> = {
-  ADMIN: "Administrador",
-  LIDER: "Coordenador",
-  REVISOR: "Revisor",
-  COLABORADOR: "Especialista",
-};
+import { NOME_PAPEL } from "@/lib/papeis";
 
 // Aceite de convite (Telas_Interface_Plataforma_CSIS.md): mostra nome, e-mail
 // e papel já definidos pelo Admin e pede só a senha — a pessoa entra sabendo

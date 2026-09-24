@@ -307,6 +307,67 @@ describe('Inscrição (cadastro público com aprovação)', () => {
     );
   });
 
+  it('formulário externo: a equipe configura o link e ele aparece no cadastro público', async () => {
+    const revisor = await criarUsuarioLogado(ctx, 'REVISOR');
+    await revisor.agente
+      .put('/inscricao/configuracao')
+      .send({ link_externo: 'javascript:alert(1)', instrucao_externa: 'x' })
+      .expect(400);
+    await revisor.agente
+      .put('/inscricao/configuracao')
+      .send({
+        link_externo: 'https://forms.gle/exemplo',
+        instrucao_externa: 'Conte sua experiência e envie seu portfólio.',
+      })
+      .expect(200);
+    const formulario = await request(ctx.app)
+      .get('/inscricao/formulario')
+      .expect(200);
+    expect(formulario.body.formulario_externo).toEqual({
+      link: 'https://forms.gle/exemplo',
+      instrucao: 'Conte sua experiência e envie seu portfólio.',
+    });
+
+    const colab = await criarUsuarioLogado(ctx, 'COLABORADOR');
+    await colab.agente
+      .put('/inscricao/configuracao')
+      .send({ link_externo: null })
+      .expect(403);
+
+    await revisor.agente
+      .put('/inscricao/configuracao')
+      .send({ link_externo: null, instrucao_externa: null })
+      .expect(200);
+    const semLink = await request(ctx.app)
+      .get('/inscricao/formulario')
+      .expect(200);
+    expect(semLink.body.formulario_externo).toBeNull();
+  });
+
+  it('equipe pode aprovar quem ainda não confirmou o e-mail (verificação manual)', async () => {
+    const { campos } = await montarFormulario();
+    const email = emailUnico('manual');
+    await inscrever(email, {
+      [campos.telefone]: '1',
+      [campos.nivel]: 'Iniciante',
+      [campos.nda]: true,
+    }).expect(201);
+    const user = await ctx.prisma.user.findUniqueOrThrow({
+      where: { email },
+      include: { inscricao: true },
+    });
+    expect(user.situacao).toBe('AGUARDANDO_EMAIL');
+    const admin = await criarUsuarioLogado(ctx, 'ADMIN');
+    await admin.agente
+      .post(`/inscricoes/${user.inscricao!.id}/aprovar`)
+      .send({ papelGlobal: 'COLABORADOR' })
+      .expect(201);
+    await request(ctx.app)
+      .post('/auth/login')
+      .send({ email, senha: 'SenhaDoAluno1' })
+      .expect(200);
+  });
+
   it('reordena os campos e recusa seleção sem opções', async () => {
     const { revisor, campos } = await montarFormulario();
     await revisor.agente

@@ -56,8 +56,15 @@ export interface CampoInscricao {
   arquivado: boolean;
 }
 
+export interface ConfiguracaoInscricao {
+  link_externo: string | null;
+  instrucao_externa: string | null;
+}
+
 export interface FormularioInscricao {
   aberto: boolean;
+  /// Etapa complementar fora da plataforma (Google Forms, Typeform...).
+  formulario_externo: { link: string; instrucao: string | null } | null;
   campos: Pick<CampoInscricao, "id" | "rotulo" | "ajuda" | "tipo" | "obrigatorio" | "opcoes">[];
 }
 

@@ -4,7 +4,9 @@ import { ChevronDown, ChevronRight, Download, ExternalLink } from "lucide-react"
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { Inscricao, PapelGlobal, RespostaInscricao } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
+import { NOME_PAPEL } from "@/lib/papeis";
+import { useWorkspace } from "@/lib/use-workspace";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { SituacaoBadge } from "@/components/SituacaoUsuario";
@@ -43,6 +45,10 @@ export default function SignupQueuePage() {
   const [observacao, setObservacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
 
+  const { data: marca } = useWorkspace();
+  const { data: config } = useQuery({ queryKey: ["config-inscricao"], queryFn: api.inscricao.configuracao });
+  const formularioExterno = config?.link_externo ?? null;
+  const enviaEmails = marca?.envia_emails ?? false;
   const podeDecidir = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const papeisPermitidos = user?.papel_global === "ADMIN" ? PAPEIS : PAPEIS.filter((p) => p !== "ADMIN");
 
@@ -116,13 +122,15 @@ export default function SignupQueuePage() {
               >
                 {expandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{i.user.nome}</p>
+                  <p className="truncate font-medium">{i.user.nome}</p>
                   <p className="truncate text-xs text-muted-foreground">{i.user.email}</p>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                   {new Date(i.criado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                 </span>
-                <SituacaoBadge situacao={i.user.situacao} />
+                <span className="shrink-0">
+                  <SituacaoBadge situacao={i.user.situacao} />
+                </span>
               </button>
 
               {expandida && (
@@ -151,12 +159,32 @@ export default function SignupQueuePage() {
                               <Download className="h-3.5 w-3.5" /> {a.nome}
                             </a>
                             <span className="text-xs text-muted-foreground">
-                              {(a.tamanho / 1024).toFixed(0)} KB · SHA-256 {a.hash_sha256.slice(0, 12)}…
+                              {formatBytes(a.tamanho)} · SHA-256 {a.hash_sha256.slice(0, 12)}…
                             </span>
                           </li>
                         ))}
                       </ul>
                     </div>
+                  )}
+
+                  {formularioExterno && (
+                    <p className="mt-3 text-sm">
+                      <a
+                        href={formularioExterno}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        Formulário externo de análise <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      <span className="text-xs text-muted-foreground">— procure as respostas de {i.user.email}</span>
+                    </p>
+                  )}
+
+                  {i.user.situacao === "AGUARDANDO_EMAIL" && (
+                    <p className="mt-3 text-xs text-status-pending">
+                      Esta pessoa ainda não confirmou o e-mail. Aprovar mesmo assim só se a equipe já verificou quem ela é.
+                    </p>
                   )}
 
                   {i.decidido_em && (
@@ -169,11 +197,9 @@ export default function SignupQueuePage() {
 
                   {podeDecidir && (i.user.situacao === "PENDENTE" || i.user.situacao === "AGUARDANDO_EMAIL") && (
                     <div className="mt-4 flex gap-2">
-                      {i.user.situacao === "PENDENTE" && (
-                        <Button size="sm" onClick={() => abrirDecisao(i, "aprovar")}>
-                          Aprovar
-                        </Button>
-                      )}
+                      <Button size="sm" onClick={() => abrirDecisao(i, "aprovar")}>
+                        Aprovar
+                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => abrirDecisao(i, "recusar")}>
                         Recusar
                       </Button>
@@ -194,8 +220,12 @@ export default function SignupQueuePage() {
             </h2>
             <p className="mb-4 text-xs text-muted-foreground">
               {decisao.tipo === "aprovar"
-                ? "A pessoa recebe um e-mail avisando que já pode entrar, com o papel escolhido abaixo."
-                : "A pessoa recebe um aviso neutro por e-mail. A observação fica só para a equipe."}
+                ? enviaEmails
+                  ? "A pessoa recebe um e-mail avisando que já pode entrar, com o papel escolhido abaixo."
+                  : "A pessoa já pode entrar com o e-mail e a senha do cadastro (esta instância não envia e-mails — avise-a por outro canal)."
+                : enviaEmails
+                  ? "A pessoa recebe um aviso neutro por e-mail. A observação fica só para a equipe."
+                  : "A conta fica bloqueada. A observação fica só para a equipe."}
             </p>
             {erro && <p className="mb-3 text-xs text-destructive">{erro}</p>}
             <div className="flex flex-col gap-3">
@@ -209,7 +239,7 @@ export default function SignupQueuePage() {
                   >
                     {papeisPermitidos.map((p) => (
                       <option key={p} value={p}>
-                        {p}
+                        {NOME_PAPEL[p]}
                       </option>
                     ))}
                   </select>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, Archive } from "lucide-react";
@@ -26,6 +26,70 @@ const ROTULO_TIPO = Object.fromEntries(TIPOS.map((t) => [t.tipo, t.rotulo])) as 
 const COM_OPCOES = new Set<TipoCampoInscricao>(["SELECAO", "MULTIPLA"]);
 
 const VAZIO: DadosCampoInscricao = { rotulo: "", ajuda: "", tipo: "TEXTO", obrigatorio: false, opcoes: [] };
+
+/// Link do formulário externo (Google Forms, Typeform...) mostrado no
+/// cadastro como etapa complementar — onde a equipe pergunta o que quiser.
+function ConfiguracaoFormularioExterno() {
+  const qc = useQueryClient();
+  const { data: config } = useQuery({ queryKey: ["config-inscricao"], queryFn: api.inscricao.configuracao });
+  const [link, setLink] = useState("");
+  const [instrucao, setInstrucao] = useState("");
+  const [mensagem, setMensagem] = useState<{ erro: boolean; texto: string } | null>(null);
+
+  useEffect(() => {
+    if (config) {
+      setLink(config.link_externo ?? "");
+      setInstrucao(config.instrucao_externa ?? "");
+    }
+  }, [config]);
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      api.inscricao.definirConfiguracao({ link_externo: link.trim() || null, instrucao_externa: instrucao.trim() || null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["config-inscricao"] });
+      qc.invalidateQueries({ queryKey: ["formulario-inscricao"] });
+      setMensagem({ erro: false, texto: link.trim() ? "Formulário externo salvo." : "Formulário externo removido." });
+    },
+    onError: (e: unknown) =>
+      setMensagem({ erro: true, texto: e instanceof ApiError ? e.message : "Não foi possível salvar." }),
+  });
+
+  return (
+    <section className="mb-8 rounded-lg border border-border p-4">
+      <h2 className="font-semibold">Formulário externo de análise</h2>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Para perguntas detalhadas (experiência, portfólio, questionários), use um Google Forms, Typeform ou similar. O
+        link aparece no cadastro como etapa complementar, pedindo que a pessoa use o mesmo e-mail — e fica visível na
+        fila de Inscrições para a equipe conferir as respostas.
+      </p>
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Link do formulário</label>
+          <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://forms.gle/…" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Instrução para o candidato (opcional)</label>
+          <Input
+            value={instrucao}
+            onChange={(e) => setInstrucao(e.target.value)}
+            placeholder="Ex.: Conte sua experiência e envie seu portfólio."
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Button size="sm" disabled={salvar.isPending} onClick={() => salvar.mutate()}>
+            Salvar
+          </Button>
+          {mensagem && (
+            <span className={mensagem.erro ? "text-xs text-destructive" : "text-xs text-status-approved"}>
+              {mensagem.texto}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // O que o cadastro público pede, editável pela equipe (Admin, Coordenador e
 // Revisor) sem mexer no código. Nome, e-mail e senha são sempre pedidos;
@@ -111,7 +175,8 @@ export default function SignupFormPage() {
         <div>
           <h1 className="text-2xl font-bold">Formulário de Inscrição</h1>
           <p className="text-sm text-muted-foreground">
-            O que o cadastro público pede, além de nome, e-mail e senha.{" "}
+            O cadastro pede sempre nome, e-mail e senha — mantenha o resto no mínimo (ex.: aceite do termo de
+            confidencialidade) e use o formulário externo para o que for detalhado.{" "}
             <Link to="/cadastro" target="_blank" className="inline-flex items-center gap-0.5 text-primary hover:underline">
               Ver como o candidato vê <ExternalLink className="h-3 w-3" />
             </Link>
@@ -122,6 +187,9 @@ export default function SignupFormPage() {
         </Button>
       </div>
 
+      <ConfiguracaoFormularioExterno />
+
+      <h2 className="mb-2 font-semibold">Perguntas no próprio cadastro</h2>
       {campos?.length === 0 && (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           Nenhuma pergunta extra ainda — o cadastro pede só nome, e-mail e senha.
