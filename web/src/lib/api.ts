@@ -19,6 +19,7 @@ import type {
   Workspace,
   ResultadoConvite,
   FormularioInscricao,
+  ConfiguracaoInscricao,
   CampoInscricao,
   DadosCampoInscricao,
   Inscricao,
@@ -100,7 +101,7 @@ export const api = {
   // Sem autenticação — usado pela tela de Login e por qualquer lugar que
   // precise mostrar nome/logo antes de existir sessão.
   branding: {
-    obter: () => get<{ nome: string | null; logo_data_url: string | null }>("/branding"),
+    obter: () => get<{ nome: string | null; logo_data_url: string | null; envia_emails: boolean }>("/branding"),
   },
 
   areas: {
@@ -335,6 +336,9 @@ export const api = {
     criarCampo: (dto: DadosCampoInscricao) => post<CampoInscricao>("/inscricao/campos", dto),
     atualizarCampo: (id: string, dto: Partial<DadosCampoInscricao>) => patch<CampoInscricao>(`/inscricao/campos/${id}`, dto),
     arquivarCampo: (id: string) => del<{ ok: boolean }>(`/inscricao/campos/${id}`),
+    configuracao: () => get<ConfiguracaoInscricao>("/inscricao/configuracao"),
+    definirConfiguracao: (dto: Partial<ConfiguracaoInscricao>) =>
+      put<ConfiguracaoInscricao>("/inscricao/configuracao", dto),
     ordenarCampos: (ids: string[]) => put<CampoInscricao[]>("/inscricao/campos/ordem", { ids }),
   },
 

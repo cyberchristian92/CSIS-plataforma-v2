@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import type { PapelGlobal } from "@/lib/types";
 import { Avatar } from "./ui/avatar";
+import { NOME_PAPEL } from "@/lib/papeis";
 import { Logo, useNomeExibicao } from "./Logo";
 
 // Sidebar organizada pelo método PARA (Projetos / Áreas / Recursos /
@@ -114,7 +115,7 @@ export function Sidebar() {
           <Avatar nome={user.nome} />
           <div className="min-w-0 flex-1 leading-tight">
             <p className="truncate text-sm font-medium">{user.nome}</p>
-            <p className="text-xs text-muted-foreground">{user.papel_global}</p>
+            <p className="text-xs text-muted-foreground">{NOME_PAPEL[user.papel_global] ?? user.papel_global}</p>
           </div>
           <button onClick={() => logout()} title="Sair" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
             <LogOut className="h-4 w-4" />

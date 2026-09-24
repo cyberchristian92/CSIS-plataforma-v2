@@ -576,3 +576,13 @@ model AnexoInscricao {
   inscricao Inscricao      @relation(fields: [inscricao_id], references: [id], onDelete: Cascade)
   campo     CampoInscricao @relation(fields: [campo_id], references: [id])
 }
+
+/// Configuração do cadastro público (uma linha só, id "padrao"). O formulário
+/// externo (Google Forms, Typeform...) cobre o que a equipe quiser perguntar
+/// além do mínimo — a plataforma só guarda o link e mostra ao candidato.
+model ConfiguracaoInscricao {
+  id                String   @id @default("padrao")
+  link_externo      String?
+  instrucao_externa String?  @db.Text
+  atualizado_em     DateTime @updatedAt
+}

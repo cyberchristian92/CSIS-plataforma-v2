@@ -29,6 +29,7 @@ import { uploadsTmpDir } from '../arquivos/utils/armazenamento';
 import { InscricaoService } from './inscricao.service';
 import {
   AtualizarCampoDto,
+  ConfiguracaoInscricaoDto,
   CriarCampoDto,
   OrdenarCamposDto,
 } from './dto/campo-inscricao.dto';
@@ -85,6 +86,23 @@ export class InscricaoController {
     @UploadedFiles() arquivos: Express.Multer.File[] | undefined,
   ) {
     return this.inscricaoService.inscrever(dto, arquivos ?? []);
+  }
+
+  @Get('configuracao')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'LIDER', 'REVISOR')
+  configuracao() {
+    return this.inscricaoService.configuracao();
+  }
+
+  @Put('configuracao')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'LIDER', 'REVISOR')
+  definirConfiguracao(
+    @Body() dto: ConfiguracaoInscricaoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.inscricaoService.definirConfiguracao(dto, user.id);
   }
 
   @Get('campos')

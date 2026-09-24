@@ -28,6 +28,7 @@ import {
 } from '../arquivos/utils/armazenamento';
 import {
   AtualizarCampoDto,
+  ConfiguracaoInscricaoDto,
   CriarCampoDto,
   TipoCampo,
 } from './dto/campo-inscricao.dto';
@@ -66,10 +67,56 @@ export class InscricaoService {
     });
   }
 
+  async configuracao() {
+    const config = await this.prisma.configuracaoInscricao.findUnique({
+      where: { id: 'padrao' },
+    });
+    return {
+      link_externo: config?.link_externo ?? null,
+      instrucao_externa: config?.instrucao_externa ?? null,
+    };
+  }
+
+  async definirConfiguracao(dto: ConfiguracaoInscricaoDto, userId: string) {
+    const anterior = await this.configuracao();
+    const dados = {
+      link_externo:
+        dto.link_externo === undefined
+          ? anterior.link_externo
+          : dto.link_externo?.trim() || null,
+      instrucao_externa:
+        dto.instrucao_externa === undefined
+          ? anterior.instrucao_externa
+          : dto.instrucao_externa?.trim() || null,
+    };
+    await this.prisma.configuracaoInscricao.upsert({
+      where: { id: 'padrao' },
+      create: { id: 'padrao', ...dados },
+      update: dados,
+    });
+    await this.auditoriaService.registrar(
+      userId,
+      'ATUALIZAR',
+      'ConfiguracaoInscricao',
+      'padrao',
+      anterior,
+      dados,
+    );
+    return dados;
+  }
+
   async formularioPublico() {
-    const campos = await this.camposAtivos();
+    const [campos, config] = await Promise.all([
+      this.camposAtivos(),
+      this.configuracao(),
+    ]);
     return {
       aberto: cadastroAberto(),
+      // Etapa complementar opcional (Google Forms, Typeform...): tudo que a
+      // equipe quiser perguntar além do mínimo fica fora da plataforma.
+      formulario_externo: config.link_externo
+        ? { link: config.link_externo, instrucao: config.instrucao_externa }
+        : null,
       campos: campos.map(
         ({ id, rotulo, ajuda, tipo, obrigatorio, opcoes }) => ({
           id,
@@ -453,11 +500,15 @@ export class InscricaoService {
       );
     }
     const inscricao = await this.buscarParaDecisao(id);
-    if (inscricao.user.situacao !== 'PENDENTE') {
+    // Aprovar quem ainda não confirmou o e-mail é permitido: a equipe pode
+    // ter verificado a pessoa por outro canal (ou a instância não envia
+    // e-mails e a confirmação nunca chegaria).
+    if (
+      inscricao.user.situacao !== 'PENDENTE' &&
+      inscricao.user.situacao !== 'AGUARDANDO_EMAIL'
+    ) {
       throw new ConflictException(
-        inscricao.user.situacao === 'AGUARDANDO_EMAIL'
-          ? 'O candidato ainda não confirmou o e-mail.'
-          : `Esta inscrição já foi decidida (situação: ${inscricao.user.situacao}).`,
+        `Esta inscrição já foi decidida (situação: ${inscricao.user.situacao}).`,
       );
     }
     await this.prisma.$transaction([

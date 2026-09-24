@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { WorkspacesService } from './workspaces.service';
+import { transporteConfigurado } from '../auth/email.service';
 
 // Único endpoint de Workspace acessível sem login — a tela de Login precisa
 // mostrar o nome/logo configurados em Configurações (white-label) antes de
@@ -16,6 +17,9 @@ export class BrandingController {
     return {
       nome: atual?.nome ?? null,
       logo_data_url: atual?.logo_data_url ?? null,
+      // As telas usam para não prometer "enviamos um e-mail" quando a
+      // instância ainda não tem SMTP configurado.
+      envia_emails: transporteConfigurado() !== 'log',
     };
   }
 }
