@@ -170,26 +170,23 @@ export default function SignupFormPage() {
     setEditando((e) => (e ? { ...e, dados: { ...e.dados, ...parcial } } : e));
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Formulário de Inscrição</h1>
-          <p className="text-sm text-muted-foreground">
-            O cadastro pede sempre nome, e-mail e senha — mantenha o resto no mínimo (ex.: aceite do termo de
-            confidencialidade) e use o formulário externo para o que for detalhado.{" "}
-            <Link to="/cadastro" target="_blank" className="inline-flex items-center gap-0.5 text-primary hover:underline">
-              Ver como o candidato vê <ExternalLink className="h-3 w-3" />
-            </Link>
-          </p>
-        </div>
-        <Button onClick={() => abrir()}>
-          <Plus className="h-4 w-4" /> Adicionar pergunta
-        </Button>
-      </div>
+    <div>
+      <p className="mb-4 text-sm text-muted-foreground">
+        O cadastro pede sempre nome, e-mail e senha — mantenha o resto no mínimo (ex.: aceite do termo de
+        confidencialidade) e use o formulário externo para o que for detalhado.{" "}
+        <Link to="/cadastro" target="_blank" className="inline-flex items-center gap-0.5 text-primary hover:underline">
+          Ver como o candidato vê <ExternalLink className="h-3 w-3" />
+        </Link>
+      </p>
 
       <ConfiguracaoFormularioExterno />
 
-      <h2 className="mb-2 font-semibold">Perguntas no próprio cadastro</h2>
+      <div className="mb-2 flex items-center justify-between gap-4">
+        <h2 className="font-semibold">Perguntas no próprio cadastro</h2>
+        <Button size="sm" onClick={() => abrir()}>
+          <Plus className="h-4 w-4" /> Adicionar pergunta
+        </Button>
+      </div>
       {campos?.length === 0 && (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           Nenhuma pergunta extra ainda — o cadastro pede só nome, e-mail e senha.

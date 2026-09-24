@@ -20,15 +20,13 @@ import AreaPage from "@/pages/AreaPage";
 import ProjectTypesPage from "@/pages/ProjectTypesPage";
 import ResourcesPage from "@/pages/ResourcesPage";
 import SettingsPage from "@/pages/SettingsPage";
-import UsersPage from "@/pages/UsersPage";
+import UserManagementPage from "@/pages/UserManagementPage";
 import AuditPage from "@/pages/AuditPage";
 import ArchivedProjectsPage from "@/pages/ArchivedProjectsPage";
 import DocumentEditorPage from "@/pages/DocumentEditorPage";
 import AcceptInvitePage from "@/pages/AcceptInvitePage";
 import ConfirmEmailPage from "@/pages/ConfirmEmailPage";
 import SignupPage from "@/pages/SignupPage";
-import SignupQueuePage from "@/pages/SignupQueuePage";
-import SignupFormPage from "@/pages/SignupFormPage";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -136,27 +134,13 @@ export default function App() {
         <Route
           path="/usuarios"
           element={
-            <RequireRole roles={["ADMIN", "LIDER"]}>
-              <UsersPage />
-            </RequireRole>
-          }
-        />
-        <Route
-          path="/inscricoes"
-          element={
             <RequireRole roles={["ADMIN", "LIDER", "REVISOR"]}>
-              <SignupQueuePage />
+              <UserManagementPage />
             </RequireRole>
           }
         />
-        <Route
-          path="/formulario-inscricao"
-          element={
-            <RequireRole roles={["ADMIN", "LIDER", "REVISOR"]}>
-              <SignupFormPage />
-            </RequireRole>
-          }
-        />
+        <Route path="/inscricoes" element={<Navigate to="/usuarios?aba=solicitacoes" replace />} />
+        <Route path="/formulario-inscricao" element={<Navigate to="/usuarios?aba=formulario" replace />} />
         <Route
           path="/auditoria"
           element={

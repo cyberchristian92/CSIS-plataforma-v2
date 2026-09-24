@@ -91,9 +91,8 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Gestão de Usuários</h1>
+    <div>
+      <div className="mb-4 flex items-center justify-end">
         <Button onClick={() => setOpen(true)}>
           <UserPlus className="h-4 w-4" /> Convidar Usuário
         </Button>

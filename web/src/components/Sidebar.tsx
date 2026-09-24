@@ -1,11 +1,10 @@
 import { useState, type ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut, Users } from "lucide-react";
+import { LayoutGrid, Folder, ChevronUp, ChevronDown, Building2, Settings2, Archive, LogOut, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import type { PapelGlobal } from "@/lib/types";
 import { Avatar } from "./ui/avatar";
-import { NOME_PAPEL } from "@/lib/papeis";
 import { Logo, useNomeExibicao } from "./Logo";
 
 // Sidebar organizada pelo método PARA (Projetos / Áreas / Recursos /
@@ -52,20 +51,12 @@ const GROUPS: NavGroup[] = [
   {
     label: "Recursos",
     icon: Settings2,
-    roles: ["ADMIN", "LIDER"],
-    items: [
-      { to: "/recursos", label: "Arquivos da Empresa" },
-      { to: "/auditoria", label: "Auditoria Global" },
-    ],
-  },
-  {
-    label: "Pessoas",
-    icon: Users,
     roles: ["ADMIN", "LIDER", "REVISOR"],
     items: [
-      { to: "/usuarios", label: "Gestão de Usuários", roles: ["ADMIN", "LIDER"] },
-      { to: "/inscricoes", label: "Inscrições" },
-      { to: "/formulario-inscricao", label: "Formulário de Inscrição" },
+      { to: "/recursos", label: "Arquivos da Empresa", roles: ["ADMIN", "LIDER"] },
+      // Revisor entra só para as abas de solicitações e formulário de cadastro.
+      { to: "/usuarios", label: "Gestão de Usuários" },
+      { to: "/auditoria", label: "Auditoria Global", roles: ["ADMIN", "LIDER"] },
     ],
   },
   {
@@ -115,7 +106,7 @@ export function Sidebar() {
           <Avatar nome={user.nome} />
           <div className="min-w-0 flex-1 leading-tight">
             <p className="truncate text-sm font-medium">{user.nome}</p>
-            <p className="text-xs text-muted-foreground">{NOME_PAPEL[user.papel_global] ?? user.papel_global}</p>
+            <p className="text-xs text-muted-foreground">{user.papel_global}</p>
           </div>
           <button onClick={() => logout()} title="Sair" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
             <LogOut className="h-4 w-4" />
