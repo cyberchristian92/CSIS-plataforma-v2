@@ -15,6 +15,8 @@
 */
 @layer base {
   :root {
+    /* Barras de rolagem e controles nativos no tom do tema. */
+    color-scheme: light;
     --background: 210 40% 98%;
     --foreground: 214 70% 6%;
 
@@ -59,6 +61,7 @@
 
   /* Tema escuro — visual "oficial" da CSIS, réplica do Flutter. É o padrão da aplicação. */
   :root.dark {
+    color-scheme: dark;
     --background: 214 70% 6%;
     --foreground: 210 40% 96%;
 
