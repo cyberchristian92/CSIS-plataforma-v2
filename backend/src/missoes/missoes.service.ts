@@ -16,6 +16,7 @@ import {
 } from '../integridade/integridade.events';
 import { CreateMissaoDto } from './dto/create-missao.dto';
 import { UpdateMissaoDto } from './dto/update-missao.dto';
+import type { STATUS_LIVRES } from './dto/mudar-status.dto';
 
 const INCLUDE_PADRAO = {
   coluna: true,
@@ -300,12 +301,12 @@ export class MissoesService {
   }
 
   /// Quadro livre de Minhas Missões (TCC, cap. 4.2/8.3: em vez de trava,
-  /// registro). Voltar de Em Revisão retira a entrega pendente (fica
-  /// RETIRADA no histórico, e dá para entregar de novo); sair de Aprovada
-  /// reabre a missão, mas a entrega aprovada e a revisão continuam lá.
+  /// registro). Qualquer coluna vale. Sair de Em Revisão tira da fila a
+  /// entrega pendente (fica RETIRADA no histórico, e dá para entregar de
+  /// novo); sair de Aprovada reabre a missão, e a aprovação continua lá.
   async mudarStatus(
     id: string,
-    destino: 'PENDENTE' | 'EM_ANDAMENTO',
+    destino: (typeof STATUS_LIVRES)[number],
     userId: string,
     papel: string,
   ) {

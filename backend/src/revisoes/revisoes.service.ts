@@ -8,8 +8,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { CreateRevisaoDto } from './dto/create-revisao.dto';
 
-const MIN_JUSTIFICATIVA = 15;
-
 @Injectable()
 export class RevisoesService {
   constructor(
@@ -36,7 +34,7 @@ export class RevisoesService {
       // Segregation of Duties: quem executou a missão (o autor desta entrega
       // ou qualquer responsável por ela) não a avalia pelo caminho normal.
       // Exceção do TCC (v4, seções 4.2 e 8.3): em vez de uma trava absoluta,
-      // a autoaprovação é tolerada — só para aprovar, com justificativa, e
+      // a autoaprovação é tolerada — só para aprovar, justificativa opcional, e
       // registrada em destaque. A garantia passa da trava para a
       // responsabilização pela trilha de auditoria.
       const ehExecutor =
@@ -45,12 +43,7 @@ export class RevisoesService {
       if (ehExecutor) {
         if (!dto.autoaprovacao || dto.status !== 'APROVADO') {
           throw new ForbiddenException(
-            'Você executou esta missão: outra pessoa deve revisá-la. Em caso excepcional (sem revisor disponível), use a autoaprovação com justificativa.',
-          );
-        }
-        if ((dto.justificativa?.trim().length ?? 0) < MIN_JUSTIFICATIVA) {
-          throw new BadRequestException(
-            `A autoaprovação exige uma justificativa de pelo menos ${MIN_JUSTIFICATIVA} caracteres.`,
+            'Você executou esta missão: outra pessoa deve revisá-la. Em caso excepcional (sem revisor disponível), use a autoaprovação.',
           );
         }
       }
@@ -88,7 +81,9 @@ export class RevisoesService {
           status: dto.status,
           comentario: dto.comentario,
           autoaprovacao,
-          justificativa: autoaprovacao ? dto.justificativa!.trim() : null,
+          justificativa: autoaprovacao
+            ? dto.justificativa?.trim() || null
+            : null,
         },
       });
       return { revisao, entrega };

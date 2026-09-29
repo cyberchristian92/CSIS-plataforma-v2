@@ -128,13 +128,29 @@ describe('Quadro livre: mover a missão de status', () => {
       .expect(403);
   });
 
-  it('Em Revisão e Aprovada não são destinos desta ação — passam pela entrega e pela revisão', async () => {
+  it('quadro livre de verdade: vai direto para Em Revisão ou Aprovada, e fica na auditoria', async () => {
     const { especialista, missao } = await cenario();
-    for (const destino of ['EM_REVISAO', 'APROVADA']) {
-      await especialista.agente
-        .patch(`/missoes/${missao.id}/status`)
-        .send({ status: destino })
-        .expect(400);
-    }
+    await especialista.agente
+      .patch(`/missoes/${missao.id}/status`)
+      .send({ status: 'APROVADA' })
+      .expect(200);
+    expect(await status(missao.id)).toBe('APROVADA');
+    await especialista.agente
+      .patch(`/missoes/${missao.id}/status`)
+      .send({ status: 'EM_REVISAO' })
+      .expect(200);
+    expect(await status(missao.id)).toBe('EM_REVISAO');
+    const movimentos = await ctx.prisma.logAuditoria.count({
+      where: { acao: 'MOVER_STATUS', entidade_id: missao.id },
+    });
+    expect(movimentos).toBe(2);
+  });
+
+  it('status que não existe é recusado', async () => {
+    const { especialista, missao } = await cenario();
+    await especialista.agente
+      .patch(`/missoes/${missao.id}/status`)
+      .send({ status: 'QUALQUER' })
+      .expect(400);
   });
 });

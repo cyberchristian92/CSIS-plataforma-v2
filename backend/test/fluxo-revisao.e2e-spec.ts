@@ -149,8 +149,8 @@ describe('Fluxo de entrega e revisão', () => {
   });
 
   // TCC v4 (seções 4.2 e 8.3): em vez de trava absoluta, a autoaprovação é
-  // tolerada em caráter excepcional — com justificativa e registro imutável.
-  it('autoaprovação excepcional: exige justificativa e fica registrada em destaque', async () => {
+  // tolerada — a justificativa é opcional e o registro é imutável.
+  it('autoaprovação: justificativa opcional, e fica registrada em destaque', async () => {
     const c = await cenario();
     await ctx.prisma.user.update({
       where: { id: c.especialista.user.id },
@@ -159,15 +159,6 @@ describe('Fluxo de entrega e revisão', () => {
     const entrega = await entregar(c);
     const rota = `/entregas/${entrega.id}/revisoes`;
 
-    // Sem justificativa suficiente: recusado.
-    await c.especialista.agente
-      .post(rota)
-      .send({
-        status: 'APROVADO',
-        autoaprovacao: true,
-        justificativa: 'urgente',
-      })
-      .expect(400);
     // Autoaprovação só serve para aprovar.
     await c.especialista.agente
       .post(rota)
@@ -238,6 +229,24 @@ describe('Fluxo de entrega e revisão', () => {
       where: { entidade_id: entrega.id },
     });
     expect(log).not.toBeNull();
+  });
+
+  it('autoaprovar sem justificativa é aceito', async () => {
+    const c = await cenario();
+    await ctx.prisma.user.update({
+      where: { id: c.especialista.user.id },
+      data: { papel_global: 'REVISOR' },
+    });
+    const entrega = await entregar(c);
+    const res = await c.especialista.agente
+      .post(`/entregas/${entrega.id}/revisoes`)
+      .send({ status: 'APROVADO', autoaprovacao: true })
+      .expect(201);
+    expect(res.body.autoaprovacao).toBe(true);
+    const missao = await ctx.prisma.missao.findUniqueOrThrow({
+      where: { id: c.missao.id },
+    });
+    expect(missao.status).toBe('APROVADA');
   });
 
   it('entrega já revisada não pode ser revisada de novo', async () => {
