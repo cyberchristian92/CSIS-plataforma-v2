@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
 
@@ -26,4 +27,10 @@ export class CreateMissaoDto {
   @IsOptional()
   @IsNumber()
   valor_bounty?: number;
+
+  /// Lista do quadro em que o cartão nasce ("Adicionar um cartão" no pé da
+  /// lista). Sem ela, vai para a primeira lista do projeto.
+  @IsOptional()
+  @IsUUID()
+  colunaId?: string;
 }

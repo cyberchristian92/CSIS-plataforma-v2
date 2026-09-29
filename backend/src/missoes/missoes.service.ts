@@ -61,17 +61,24 @@ export class MissoesService {
   ) {}
 
   async criar(projetoId: string, dto: CreateMissaoDto, userId: string) {
-    // Board Kanban: a missão nova entra na primeira coluna do projeto (se
-    // existir alguma), no fim dela — puramente organizacional, não influencia
-    // `status` (que continua nascendo PENDENTE por padrão do schema).
-    const primeiraColuna = await this.prisma.coluna.findFirst({
-      where: { projeto_id: projetoId },
-      orderBy: { ordem: 'asc' },
-    });
-    const ordem = primeiraColuna
-      ? await this.prisma.missao.count({
-          where: { coluna_id: primeiraColuna.id },
+    // Board Kanban: a missão nova entra na lista escolhida ou, sem ela, na
+    // primeira do projeto (se existir alguma) — sempre no fim. Puramente
+    // organizacional: não influencia `status` (nasce PENDENTE).
+    const coluna = dto.colunaId
+      ? await this.prisma.coluna.findFirst({
+          where: { id: dto.colunaId, projeto_id: projetoId },
         })
+      : await this.prisma.coluna.findFirst({
+          where: { projeto_id: projetoId },
+          orderBy: { ordem: 'asc' },
+        });
+    if (dto.colunaId && !coluna) {
+      throw new BadRequestException(
+        'A lista informada não existe ou pertence a outro projeto.',
+      );
+    }
+    const ordem = coluna
+      ? await this.prisma.missao.count({ where: { coluna_id: coluna.id } })
       : 0;
 
     const missao = await this.prisma.missao.create({
@@ -82,7 +89,7 @@ export class MissoesService {
         criterio_aceite: dto.criterio_aceite,
         valor_bounty: dto.valor_bounty,
         prazo: dto.prazo ? new Date(dto.prazo) : undefined,
-        coluna_id: primeiraColuna?.id,
+        coluna_id: coluna?.id,
         ordem,
       },
       include: INCLUDE_PADRAO,
