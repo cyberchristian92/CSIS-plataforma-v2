@@ -2,19 +2,19 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Columns3, List } from "lucide-react";
 import { api } from "@/lib/api";
-import type { MinhaMissao } from "@/lib/types";
+import type { MinhaMissao, MissaoStatus } from "@/lib/types";
 import { Dialog } from "@/components/ui/dialog";
 import { MissionDialog } from "@/components/MissionDialog";
 import { EntregaForm } from "@/components/EntregaForm";
+import { DialogoAutoaprovar } from "@/components/Autoaprovacao";
 import { QuadroMissoes } from "@/components/minhas-missoes/QuadroMissoes";
 import { ListaMissoes } from "@/components/minhas-missoes/ListaMissoes";
 import { ehDevolvida } from "@/components/minhas-missoes/comum";
 import { cn } from "@/lib/utils";
 
 // Minhas Missões: tudo que está com a pessoa, em todos os projetos. O padrão é
-// o quadro por status (ver QuadroMissoes); a lista agrupada pelo que fazer é
-// uma visão alternativa. Nas duas, cada missão já traz a próxima ação
-// (Iniciar / Entregar), o prazo e, se foi devolvida, o motivo do revisor.
+// o quadro por status, livre (ver QuadroMissoes e `mover` abaixo); a lista
+// agrupada pelo que fazer é uma visão alternativa.
 
 type Modo = "quadro" | "lista";
 const CHAVE_MODO = "csis.minhas-missoes.modo";
@@ -31,7 +31,10 @@ export default function MyMissionsPage() {
   const qc = useQueryClient();
   const [modo, setModo] = useState<Modo>(lerModo);
   const [missaoAberta, setMissaoAberta] = useState<string | null>(null);
-  const [entregando, setEntregando] = useState<MinhaMissao | null>(null);
+  // `depois`: soltar em "Aprovada" sem entrega pede a entrega e, em seguida,
+  // a justificativa da autoaprovação.
+  const [entregando, setEntregando] = useState<{ missao: MinhaMissao; depois?: "autoaprovar" } | null>(null);
+  const [autoaprovando, setAutoaprovando] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
 
   useEffect(() => {
@@ -79,8 +82,48 @@ export default function MyMissionsPage() {
     onAbrir: setMissaoAberta,
     onIniciar: (id: string) => iniciar.mutate(id),
     iniciandoId: iniciar.isPending ? (iniciar.variables ?? null) : null,
-    onEntregar: setEntregando,
+    onEntregar: (missao: MinhaMissao) => setEntregando({ missao }),
   };
+
+  function atualizar() {
+    qc.invalidateQueries({ queryKey: ["missoes-minhas"] });
+    qc.invalidateQueries({ queryKey: ["notificacoes-resumo"] });
+  }
+
+  // Deixa a missão "Em Andamento" para poder entregar: inicia se está
+  // pendente, ou volta (retira da revisão / reabre) pelo quadro livre.
+  async function garantirEmAndamento(m: MinhaMissao) {
+    if (m.status === "PENDENTE") await api.missoes.iniciar(m.id);
+    else if (m.status !== "EM_ANDAMENTO") await api.missoes.mudarStatus(m.id, "EM_ANDAMENTO");
+  }
+
+  // Quadro livre: qualquer coluna vale. Os passos do processo usam as ações
+  // próprias (iniciar, entregar, autoaprovar); o resto muda o status direto.
+  // Tudo fica na auditoria.
+  async function mover(m: MinhaMissao, destino: MissaoStatus) {
+    setAviso(null);
+    try {
+      if (destino === "PENDENTE") {
+        await api.missoes.mudarStatus(m.id, "PENDENTE");
+      } else if (destino === "EM_ANDAMENTO") {
+        await garantirEmAndamento(m);
+      } else if (destino === "EM_REVISAO") {
+        await garantirEmAndamento(m);
+        setEntregando({ missao: m });
+      } else if (destino === "APROVADA") {
+        if (m.status === "EM_REVISAO" && m.ultima_entrega) {
+          setAutoaprovando(m.ultima_entrega.id);
+        } else {
+          await garantirEmAndamento(m);
+          setEntregando({ missao: m, depois: "autoaprovar" });
+        }
+      }
+    } catch (e) {
+      setAviso({ texto: e instanceof Error ? e.message : "Não foi possível mover a missão.", erro: true });
+    } finally {
+      atualizar();
+    }
+  }
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -131,7 +174,7 @@ export default function MyMissionsPage() {
 
       {lista.length > 0 &&
         (modo === "quadro" ? (
-          <QuadroMissoes {...props} onAviso={(texto) => setAviso({ texto, erro: false })} />
+          <QuadroMissoes missoes={lista} onAbrir={setMissaoAberta} onMover={mover} />
         ) : (
           <div className="w-full max-w-5xl">
             <ListaMissoes {...props} />
@@ -145,25 +188,43 @@ export default function MyMissionsPage() {
           <>
             <h2 className="pr-6 text-lg font-bold">Entregar para revisão</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {entregando.titulo} · {entregando.projeto.nome}
+              {entregando.missao.titulo} · {entregando.missao.projeto.nome}
             </p>
-            {entregando.ultima_entrega?.revisao?.status === "REJEITADO" && (
+            {entregando.depois === "autoaprovar" && (
+              <p className="mt-3 border-l-2 border-status-in-review pl-3 text-sm">
+                Para aprovar, registre a entrega (pode ser sem texto e sem anexo). Em seguida você justifica a
+                autoaprovação.
+              </p>
+            )}
+            {entregando.missao.ultima_entrega?.revisao?.status === "REJEITADO" && (
               <p className="mt-3 border-l-2 border-destructive pl-3 text-sm">
-                <span className="text-muted-foreground">O que {entregando.ultima_entrega.revisao.revisor.nome} pediu: </span>
-                {entregando.ultima_entrega.revisao.comentario ?? "sem comentário"}
+                <span className="text-muted-foreground">
+                  O que {entregando.missao.ultima_entrega.revisao.revisor.nome} pediu:{" "}
+                </span>
+                {entregando.missao.ultima_entrega.revisao.comentario ?? "sem comentário"}
               </p>
             )}
             <div className="mt-4">
               <EntregaForm
-                missaoId={entregando.id}
-                projetoId={entregando.projeto.id}
-                onEntregue={() => setEntregando(null)}
+                missaoId={entregando.missao.id}
+                projetoId={entregando.missao.projeto.id}
+                onEntregue={(entregaId) => {
+                  const depois = entregando.depois;
+                  setEntregando(null);
+                  if (depois === "autoaprovar") setAutoaprovando(entregaId);
+                }}
                 onCancelar={() => setEntregando(null)}
               />
             </div>
           </>
         )}
       </Dialog>
+
+      <DialogoAutoaprovar
+        entregaId={autoaprovando}
+        onFechar={() => setAutoaprovando(null)}
+        onConcluido={atualizar}
+      />
     </div>
   );
 }

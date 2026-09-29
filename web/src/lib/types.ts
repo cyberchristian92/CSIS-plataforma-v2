@@ -250,7 +250,8 @@ export interface Documento {
   atualizado_em: string;
 }
 
-export type EntregaStatus = "EM_REVISAO" | "APROVADA" | "REJEITADA";
+// RETIRADA: a pessoa tirou a entrega da revisão pelo quadro livre.
+export type EntregaStatus = "EM_REVISAO" | "APROVADA" | "REJEITADA" | "RETIRADA";
 
 export interface Entrega {
   id: string;

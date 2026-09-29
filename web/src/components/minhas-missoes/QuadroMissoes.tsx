@@ -18,13 +18,10 @@ import { STATUS_COLORS, STATUS_LABELS } from "@/lib/theme-constants";
 import { cn } from "@/lib/utils";
 import { ehDevolvida } from "./comum";
 
-// Kanban de status FIXO (Pendente/Em Andamento/Em Revisão/Aprovada) — distinto
-// do board livre (BoardPage.tsx). Aqui a coluna É o `Missao.status`:
-// - Pendente → Em Andamento por arrastar = "Iniciar".
-// - Em Andamento → Em Revisão por arrastar abre a entrega (texto + anexos):
-//   a revisão só existe com o que foi entregue.
-// - Aprovar/rejeitar é do revisor, e nada volta de etapa pelo quadro — em vez
-//   de o card voltar calado, a tela explica o porquê.
+// Quadro de status de Minhas Missões — livre: dá para soltar o card em
+// qualquer coluna. Quem decide o que cada movimento faz é a página (iniciar,
+// entregar, autoaprovar, voltar de etapa, reabrir); tudo fica na auditoria.
+// Distinto do board do projeto (BoardPage.tsx), onde a coluna não é o status.
 const COLUNAS: MissaoStatus[] = ["PENDENTE", "EM_ANDAMENTO", "EM_REVISAO", "APROVADA"];
 
 // Missão antiga com status REJEITADA mora junto das que voltaram para correção.
@@ -32,27 +29,14 @@ function colunaDe(m: MinhaMissao): MissaoStatus {
   return m.status === "REJEITADA" ? "EM_ANDAMENTO" : m.status;
 }
 
-function motivoMovimentoInvalido(origem: MissaoStatus, destino: MissaoStatus): string {
-  if (destino === "APROVADA") return "Quem aprova é o revisor, pela Fila de Revisão.";
-  if (origem === "PENDENTE" && destino === "EM_REVISAO") return "Inicie a missão antes de entregar.";
-  if (COLUNAS.indexOf(destino) < COLUNAS.indexOf(origem)) {
-    return "Uma missão não volta de etapa pelo quadro. Se a entrega precisar de correção, o revisor a devolve.";
-  }
-  return "Esse movimento não muda o status da missão.";
-}
-
 export function QuadroMissoes({
   missoes,
   onAbrir,
-  onIniciar,
-  onEntregar,
-  onAviso,
+  onMover,
 }: {
   missoes: MinhaMissao[];
   onAbrir: (id: string) => void;
-  onIniciar: (id: string) => void;
-  onEntregar: (m: MinhaMissao) => void;
-  onAviso: (mensagem: string) => void;
+  onMover: (missao: MinhaMissao, destino: MissaoStatus) => void;
 }) {
   const [arrastando, setArrastando] = useState<MinhaMissao | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -65,12 +49,8 @@ export function QuadroMissoes({
     setArrastando(null);
     const missao = missoes.find((m) => m.id === e.active.id);
     if (!missao || !e.over) return;
-    const origem = colunaDe(missao);
     const destino = e.over.id as MissaoStatus;
-    if (origem === destino) return;
-    if (missao.status === "PENDENTE" && destino === "EM_ANDAMENTO") return onIniciar(missao.id);
-    if (missao.status === "EM_ANDAMENTO" && destino === "EM_REVISAO") return onEntregar(missao);
-    onAviso(motivoMovimentoInvalido(origem, destino));
+    if (colunaDe(missao) !== destino) onMover(missao, destino);
   }
 
   return (

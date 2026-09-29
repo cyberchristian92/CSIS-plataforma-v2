@@ -23,7 +23,8 @@ export function EntregaForm({
 }: {
   missaoId: string;
   projetoId: string;
-  onEntregue: () => void;
+  /// Recebe o id da entrega registrada (para encadear, ex.: autoaprovação).
+  onEntregue: (entregaId: string) => void;
   onCancelar: () => void;
 }) {
   const qc = useQueryClient();
@@ -37,7 +38,6 @@ export function EntregaForm({
   const [erro, setErro] = useState<string | null>(null);
 
   const reenviando = entregaId !== null;
-  const vazia = !conteudo.trim() && arquivos.length === 0;
 
   function atualizarTelas() {
     for (const chave of [["missao", missaoId], ["entregas", missaoId], ["missoes-minhas"], ["missoes-em-revisao"], ["missoes", projetoId]]) {
@@ -71,7 +71,7 @@ export function EntregaForm({
       const restantes = await subir(id, reenviando ? falhas.map((f) => f.file) : arquivos);
       atualizarTelas();
       setFalhas(restantes);
-      if (restantes.length === 0) onEntregue();
+      if (restantes.length === 0) onEntregue(id);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível registrar a entrega.");
     } finally {
@@ -97,7 +97,7 @@ export function EntregaForm({
           <Button size="sm" onClick={enviar} disabled={enviando}>
             Tentar enviar de novo
           </Button>
-          <Button size="sm" variant="ghost" onClick={onEntregue} disabled={enviando}>
+          <Button size="sm" variant="ghost" onClick={() => onEntregue(entregaId!)} disabled={enviando}>
             Seguir sem eles
           </Button>
         </div>
@@ -159,7 +159,7 @@ export function EntregaForm({
           <Button size="sm" variant="ghost" onClick={onCancelar} disabled={enviando}>
             Cancelar
           </Button>
-          <Button size="sm" onClick={enviar} disabled={enviando || vazia}>
+          <Button size="sm" onClick={enviar} disabled={enviando}>
             {enviando ? "Enviando…" : "Enviar para revisão"}
           </Button>
         </div>

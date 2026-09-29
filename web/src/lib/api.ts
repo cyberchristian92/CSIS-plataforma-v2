@@ -170,6 +170,9 @@ export const api = {
     atualizarTags: (id: string, tags: string[]) => patch<Missao>(`/missoes/${id}/tags`, { tags }),
     atribuir: (id: string, responsavelIds: string[]) => patch<Missao>(`/missoes/${id}/atribuir`, { responsavelIds }),
     iniciar: (id: string) => patch<Missao>(`/missoes/${id}/iniciar`, {}),
+    // Quadro livre: voltar de etapa, retirar da revisão, reabrir aprovada.
+    mudarStatus: (id: string, status: "PENDENTE" | "EM_ANDAMENTO") =>
+      patch<Missao>(`/missoes/${id}/status`, { status }),
     remover: (id: string) => del<void>(`/missoes/${id}`),
   },
 
