@@ -13,7 +13,7 @@ export default function ResourcesPage() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-2xl font-bold">Arquivos da Empresa</h1>
+      <h1 className="mb-1 text-2xl font-bold">Arquivos</h1>
       <p className="mb-4 text-sm text-muted-foreground">
         Ativos organizacionais compartilhados — logos, templates, prompts e o que mais fizer sentido para toda a
         operação.

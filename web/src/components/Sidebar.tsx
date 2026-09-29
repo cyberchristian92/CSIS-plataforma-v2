@@ -45,7 +45,6 @@ const GROUPS: NavGroup[] = [
     roles: ["ADMIN", "LIDER"],
     items: [
       { to: "/areas", label: "Gestão de Áreas" },
-      { to: "/tipos-projeto", label: "Tipos de Projeto" },
     ],
   },
   {
@@ -53,7 +52,7 @@ const GROUPS: NavGroup[] = [
     icon: Settings2,
     roles: ["ADMIN", "LIDER", "REVISOR"],
     items: [
-      { to: "/recursos", label: "Arquivos da Empresa", roles: ["ADMIN", "LIDER"] },
+      { to: "/recursos", label: "Arquivos", roles: ["ADMIN", "LIDER"] },
       // Revisor entra só para as abas de solicitações e formulário de cadastro.
       { to: "/usuarios", label: "Gestão de Usuários" },
       { to: "/auditoria", label: "Auditoria Global", roles: ["ADMIN", "LIDER"] },

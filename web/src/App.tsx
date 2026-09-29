@@ -17,7 +17,6 @@ import ExplorerPage from "@/pages/ExplorerPage";
 import BoardPage from "@/pages/BoardPage";
 import AreasPage from "@/pages/AreasPage";
 import AreaPage from "@/pages/AreaPage";
-import ProjectTypesPage from "@/pages/ProjectTypesPage";
 import ResourcesPage from "@/pages/ResourcesPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UserManagementPage from "@/pages/UserManagementPage";
@@ -107,14 +106,8 @@ export default function App() {
             </RequireRole>
           }
         />
-        <Route
-          path="/tipos-projeto"
-          element={
-            <RequireRole roles={["ADMIN", "LIDER"]}>
-              <ProjectTypesPage />
-            </RequireRole>
-          }
-        />
+        {/* Tipos de Projeto saiu da navegação — links antigos caem nas Áreas. */}
+        <Route path="/tipos-projeto" element={<Navigate to="/areas" replace />} />
         <Route
           path="/recursos"
           element={
