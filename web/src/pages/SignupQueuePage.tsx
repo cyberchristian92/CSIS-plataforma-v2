@@ -7,6 +7,8 @@ import type { Inscricao, PapelGlobal, RespostaInscricao } from "@/lib/types";
 import { cn, formatBytes } from "@/lib/utils";
 import { NOME_PAPEL } from "@/lib/papeis";
 import { useWorkspace } from "@/lib/use-workspace";
+import { useWorkspaceId } from "@/lib/use-workspace-id";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { SituacaoBadge } from "@/components/SituacaoUsuario";
@@ -43,6 +45,8 @@ export default function SignupQueuePage() {
   const [decisao, setDecisao] = useState<{ inscricao: Inscricao; tipo: "aprovar" | "recusar" } | null>(null);
   const [papel, setPapel] = useState<PapelGlobal>("COLABORADOR");
   const [observacao, setObservacao] = useState("");
+  const [listaIds, setListaIds] = useState<string[]>([]);
+  const [areaIds, setAreaIds] = useState<string[]>([]);
   const [erro, setErro] = useState<string | null>(null);
 
   const { data: marca } = useWorkspace();
@@ -52,6 +56,21 @@ export default function SignupQueuePage() {
   const podeDecidir = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
   const papeisPermitidos = user?.papel_global === "ADMIN" ? PAPEIS : PAPEIS.filter((p) => p !== "ADMIN");
 
+  // Para aprovar já deixando a pessoa pronta: em que equipes entra e que
+  // áreas enxerga.
+  const workspaceId = useWorkspaceId();
+  const aprovando = decisao?.tipo === "aprovar";
+  const { data: equipes } = useQuery({
+    queryKey: ["listas", workspaceId],
+    queryFn: () => api.listas.listarPorWorkspace(workspaceId!),
+    enabled: aprovando && !!workspaceId,
+  });
+  const { data: areas } = useQuery({
+    queryKey: ["areas-todas"],
+    queryFn: api.areas.listarTodas,
+    enabled: aprovando,
+  });
+
   const { data: inscricoes, isLoading } = useQuery({
     queryKey: ["inscricoes", aba],
     queryFn: () => api.inscricoes.listar(aba),
@@ -60,7 +79,11 @@ export default function SignupQueuePage() {
   const decidir = useMutation({
     mutationFn: () =>
       decisao!.tipo === "aprovar"
-        ? api.inscricoes.aprovar(decisao!.inscricao.id, papel, observacao || undefined)
+        ? api.inscricoes.aprovar(decisao!.inscricao.id, papel, {
+            observacao: observacao || undefined,
+            listaIds,
+            areaIds,
+          })
         : api.inscricoes.recusar(decisao!.inscricao.id, observacao || undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inscricoes"] });
@@ -74,6 +97,8 @@ export default function SignupQueuePage() {
     setDecisao({ inscricao, tipo });
     setPapel("COLABORADOR");
     setObservacao("");
+    setListaIds([]);
+    setAreaIds([]);
     setErro(null);
   }
 
@@ -218,7 +243,7 @@ export default function SignupQueuePage() {
             <p className="mb-4 text-xs text-muted-foreground">
               {decisao.tipo === "aprovar"
                 ? enviaEmails
-                  ? "A pessoa recebe um e-mail avisando que já pode entrar, com o papel escolhido abaixo."
+                  ? "A pessoa recebe um e-mail avisando que já pode entrar, com o papel, as equipes e as áreas escolhidas abaixo."
                   : "A pessoa já pode entrar com o e-mail e a senha do cadastro (esta instância não envia e-mails — avise-a por outro canal)."
                 : enviaEmails
                   ? "A pessoa recebe um aviso neutro por e-mail. A observação fica só para a equipe."
@@ -241,6 +266,32 @@ export default function SignupQueuePage() {
                     ))}
                   </select>
                 </div>
+              )}
+              {decisao.tipo === "aprovar" && (
+                <>
+                  <Marcacoes
+                    titulo="Equipes"
+                    vazio={
+                      <>
+                        Nenhuma equipe criada ainda —{" "}
+                        <Link to="/configuracoes" className="text-primary hover:underline">
+                          criar em Configurações
+                        </Link>
+                        .
+                      </>
+                    }
+                    opcoes={(equipes ?? []).map((l) => ({ id: l.id, nome: l.nome }))}
+                    marcados={listaIds}
+                    onChange={setListaIds}
+                  />
+                  <Marcacoes
+                    titulo="Áreas que a pessoa enxerga"
+                    vazio="Nenhuma área criada ainda."
+                    opcoes={(areas ?? []).map((a) => ({ id: a.id, nome: a.nome }))}
+                    marcados={areaIds}
+                    onChange={setAreaIds}
+                  />
+                </>
               )}
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">Observação interna (opcional)</label>
@@ -268,5 +319,44 @@ export default function SignupQueuePage() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+// Lista de caixas de marcação (equipes, áreas) do diálogo de aprovação.
+function Marcacoes({
+  titulo,
+  vazio,
+  opcoes,
+  marcados,
+  onChange,
+}: {
+  titulo: string;
+  vazio: React.ReactNode;
+  opcoes: { id: string; nome: string }[];
+  marcados: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-1 block text-xs font-medium text-muted-foreground">{titulo} (opcional)</legend>
+      {opcoes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{vazio}</p>
+      ) : (
+        <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded-md border border-input p-2">
+          {opcoes.map((o) => (
+            <label key={o.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={marcados.includes(o.id)}
+                onChange={(e) =>
+                  onChange(e.target.checked ? [...marcados, o.id] : marcados.filter((id) => id !== o.id))
+                }
+              />
+              {o.nome}
+            </label>
+          ))}
+        </div>
+      )}
+    </fieldset>
   );
 }

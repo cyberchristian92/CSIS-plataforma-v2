@@ -368,8 +368,12 @@ export const api = {
 
   inscricoes: {
     listar: (situacao?: string) => get<Inscricao[]>(`/inscricoes${situacao ? `?situacao=${situacao}` : ""}`),
-    aprovar: (id: string, papelGlobal: User["papel_global"], observacao?: string) =>
-      post<{ ok: boolean }>(`/inscricoes/${id}/aprovar`, { papelGlobal, observacao }),
+    // Equipes (Listas de Acesso) e áreas liberadas vão na mesma decisão.
+    aprovar: (
+      id: string,
+      papelGlobal: User["papel_global"],
+      opcoes: { observacao?: string; listaIds?: string[]; areaIds?: string[] } = {},
+    ) => post<{ ok: boolean }>(`/inscricoes/${id}/aprovar`, { papelGlobal, ...opcoes }),
     recusar: (id: string, observacao?: string) => post<{ ok: boolean }>(`/inscricoes/${id}/recusar`, { observacao }),
     urlAnexo: (id: string, anexoId: string) => `${BASE}/inscricoes/${id}/anexos/${anexoId}`,
   },
