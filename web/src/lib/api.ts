@@ -161,7 +161,6 @@ export const api = {
   missoes: {
     listarPorProjeto: (projetoId: string) => get<Missao[]>(`/projetos/${projetoId}/missoes`),
     minhas: () => get<MinhaMissao[]>("/missoes/minhas"),
-    emRevisao: () => get<Missao[]>("/missoes/em-revisao"),
     buscar: (id: string) => get<Missao>(`/missoes/${id}`),
     criar: (projetoId: string, dto: { titulo: string; descricao?: string; valor_bounty?: number; colunaId?: string }) =>
       post<Missao>(`/projetos/${projetoId}/missoes`, dto),

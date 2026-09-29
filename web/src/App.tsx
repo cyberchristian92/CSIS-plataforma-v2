@@ -10,7 +10,6 @@ import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ProjectsPage from "@/pages/ProjectsPage";
 import MyMissionsPage from "@/pages/MyMissionsPage";
-import ReviewQueuePage from "@/pages/ReviewQueuePage";
 import ProjectPage from "@/pages/ProjectPage";
 import ProjectOverviewPage from "@/pages/ProjectOverviewPage";
 import ExplorerPage from "@/pages/ExplorerPage";
@@ -82,14 +81,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/projetos" element={<ProjectsPage />} />
         <Route path="/minhas-missoes" element={<MyMissionsPage />} />
-        <Route
-          path="/fila-revisao"
-          element={
-            <RequireRole roles={["ADMIN", "LIDER", "REVISOR"]}>
-              <ReviewQueuePage />
-            </RequireRole>
-          }
-        />
+        <Route path="/fila-revisao" element={<Navigate to="/minhas-missoes" replace />} />
         <Route
           path="/areas"
           element={

@@ -30,7 +30,6 @@ export function SinoNotificacoes() {
 
   const itens = [
     { n: data?.solicitacoes_cadastro ?? 0, texto: ["solicitação de cadastro", "solicitações de cadastro"], para: "/usuarios?aba=solicitacoes" },
-    { n: data?.fila_revisao ?? 0, texto: ["entrega aguardando revisão", "entregas aguardando revisão"], para: "/fila-revisao" },
     { n: data?.missoes_devolvidas ?? 0, texto: ["missão devolvida para correção", "missões devolvidas para correção"], para: "/minhas-missoes" },
   ].filter((i) => i.n > 0);
   const total = itens.reduce((soma, i) => soma + i.n, 0);

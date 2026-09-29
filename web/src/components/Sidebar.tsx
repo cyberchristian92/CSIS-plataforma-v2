@@ -36,7 +36,6 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: "/projetos", label: "Projetos Abertos" },
       { to: "/minhas-missoes", label: "Minhas Missões" },
-      { to: "/fila-revisao", label: "Fila de Revisão", roles: ["ADMIN", "LIDER", "REVISOR"] },
     ],
   },
   {

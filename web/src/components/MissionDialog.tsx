@@ -89,7 +89,6 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
   function invalidarMissao() {
     qc.invalidateQueries({ queryKey: ["missao", missaoId] });
     qc.invalidateQueries({ queryKey: ["missoes-minhas"] });
-    qc.invalidateQueries({ queryKey: ["missoes-em-revisao"] });
     qc.invalidateQueries({ queryKey: ["missoes", missao?.projeto_id] });
   }
 

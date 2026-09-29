@@ -40,7 +40,7 @@ export function EntregaForm({
   const reenviando = entregaId !== null;
 
   function atualizarTelas() {
-    for (const chave of [["missao", missaoId], ["entregas", missaoId], ["missoes-minhas"], ["missoes-em-revisao"], ["missoes", projetoId]]) {
+    for (const chave of [["missao", missaoId], ["entregas", missaoId], ["missoes-minhas"], ["missoes", projetoId]]) {
       qc.invalidateQueries({ queryKey: chave });
     }
   }
