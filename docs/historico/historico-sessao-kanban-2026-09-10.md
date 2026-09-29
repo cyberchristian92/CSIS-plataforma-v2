@@ -5,7 +5,7 @@ Board Kanban (`web/src/pages/BoardPage.tsx`) e no painel de detalhe de Missão
 (`web/src/components/MissionDialog.tsx`). Escrito para handoff — outra pessoa ou outra IA que
 precise continuar de onde parou.
 
-Complementa `docs/historico-sessao-csis-v2.md` (sessão anterior) — não repete o que já está lá.
+Complementa `docs/historico/historico-sessao-csis-v2.md` (sessão anterior) — não repete o que já está lá.
 
 ## 1. Contexto de entrada
 

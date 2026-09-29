@@ -1,0 +1,20 @@
+# Quebra de linha sempre LF no repositório e na cópia de trabalho, inclusive
+# no Windows. Sem isto, o Git no Windows converte para CRLF e os scripts que
+# rodam dentro dos containers Linux (backend/pandoc/worker.sh, deploy/*.sh)
+# quebram com "/bin/sh^M: bad interpreter" — o motor de PDF nem sobe.
+* text=auto eol=lf
+
+# Binários: nunca mexer.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary

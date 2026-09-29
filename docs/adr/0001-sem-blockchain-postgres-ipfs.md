@@ -7,7 +7,7 @@
 
 A Plataforma CSIS precisa garantir integridade e rastreabilidade de evidências digitais e do
 histórico de estados de Missões/Projetos — requisito central tanto do TCC original quanto da v2.
-O levantamento bibliográfico feito em `docs/ipfs-chain-of-custody-research.md` mostrou um padrão
+O levantamento bibliográfico feito em `docs/pesquisa/ipfs-chain-of-custody-research.md` mostrou um padrão
 consistente: praticamente todo sistema publicado que combina armazenamento endereçado por
 conteúdo (IPFS) com evidência sensível também usa blockchain (ex.: Viswanathan & Udhaya Kumar,
 2024; Shilpa & Shanthakumara, 2023; Onyeashie et al., 2025 — este último usando Hyperledger

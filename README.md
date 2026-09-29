@@ -10,6 +10,37 @@ confiar na palavra de quem mexeu nele.
 próprios dados, nome e logo — não existe uma conta compartilhada num serviço de terceiro
 guardando o caso de ninguém.
 
+## Rodar na sua máquina
+
+Precisa só do [Git](https://git-scm.com/downloads) e do
+[Docker Desktop](https://www.docker.com/products/docker-desktop/) (no Windows, pelo WSL 2 —
+veja o guia). Nada de Node, Postgres ou LaTeX instalados à mão.
+
+```bash
+git clone https://github.com/cyberchristian92/CSIS-plataforma-v2.git
+cd CSIS-plataforma-v2
+docker compose up -d --build
+```
+
+Abra **http://localhost:5174** e entre com `admin@csis.local` / `TrocarSenha123`.
+
+> A **primeira** subida leva de 10 a 30 minutos: o motor de PDF baixa ~5 GB de TeX Live. Para
+> usar antes disso, suba só o essencial com `docker compose up -d --build db backend web`.
+
+Travou em algum passo? O **[guia de desenvolvimento](docs/desenvolvimento.md)** tem o passo a
+passo para Windows, Mac e Linux, o dia a dia (hot-reload, migrations, testes), o mapa do código e
+uma tabela de [problemas comuns](docs/desenvolvimento.md#10-problemas-comuns) com a solução de
+cada um.
+
+## Documentação
+
+| Quero... | Leia |
+|---|---|
+| rodar, desenvolver, testar, entender o código | [docs/desenvolvimento.md](docs/desenvolvimento.md) |
+| colocar no ar para outras pessoas usarem | [docs/hospedagem.md](docs/hospedagem.md) |
+| entender por que algo foi feito de certo jeito | [docs/adr/](docs/adr/) |
+| o levantamento bibliográfico do TCC | [docs/pesquisa/](docs/pesquisa/) |
+
 ## O que a plataforma resolve
 
 Um caso de perícia digital normalmente concentra tudo numa única pessoa: quem coleta a
@@ -64,80 +95,14 @@ equipe, é regra que o sistema recusa violar):
 - **Resumo visual do Projeto**: capa e vídeo do YouTube embutido na Visão Geral, pra dar contexto
   rápido de um caso sem precisar abrir os detalhes.
 
-## Colocar no ar em 5 minutos (Docker)
+## Colocar no ar
 
-Pré-requisitos: [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e
-rodando, [Node.js 20+](https://nodejs.org/) (só para o frontend — o backend roda inteiro dentro
-do container).
+Duas formas, as duas gratuitas — passo a passo em **[docs/hospedagem.md](docs/hospedagem.md)**:
 
-```bash
-git clone https://github.com/cyberchristian92/CSIS-plataforma-v2.git
-cd CSIS-plataforma-v2
-
-# 1. Banco + backend (aplica as migrations e cria o usuário admin sozinho)
-cp .env.example .env
-docker compose up -d --build
-
-# 2. Frontend (janela/aba de terminal separada)
-cd web
-npm install
-npm run dev
-```
-
-Abra **http://localhost:5174** e entre com:
-
-- **E-mail**: `admin@csis.local`
-- **Senha**: `TrocarSenha123`
-
-(Troque a senha assim que entrar — são as credenciais padrão de qualquer instância nova, definidas
-em `.env`.)
-
-Para acompanhar os logs do backend: `docker compose logs -f backend`. Para desligar tudo:
-`docker compose down` (os dados do banco continuam guardados no volume `pgdata` — some só com
-`docker compose down -v`).
-
-A primeira subida demora mais: o motor de PDF (serviço `pandoc`) baixa ~5 GB de TeX Live.
-
-## Hospedar na internet (grátis)
-
-Um servidor da Oracle Cloud "Always Free" + endereço gratuito do DuckDNS + HTTPS automático:
-passo a passo em **[docs/hospedagem.md](docs/hospedagem.md)**. No servidor, tudo se resume a:
-
-```bash
-git clone https://github.com/cyberchristian92/CSIS-plataforma-v2.git
-cd CSIS-plataforma-v2
-bash deploy/instalar.sh
-```
-
-## Rodando sem Docker (desenvolvimento)
-
-Útil se você quer editar o backend com hot-reload em vez de reconstruir a imagem a cada mudança.
-
-```bash
-# Banco de dados e motor de PDF (ainda via Docker). LAUDO_VOLUME faz o motor
-# enxergar a pasta que o backend usa fora do Docker.
-echo "LAUDO_VOLUME=./backend/laudo-workdir" >> .env
-docker compose up -d db pandoc
-
-# Backend
-cd backend
-npm install
-cp .env.example .env   # copie backend/.env.example — ajuste DATABASE_URL se mudou DB_PORT
-npx prisma migrate deploy
-npx prisma db seed
-npm run start:dev      # http://localhost:3000
-
-# Frontend (outro terminal)
-cd web
-npm install
-npm run dev             # http://localhost:5174
-```
-
-Variáveis de ambiente relevantes (documentadas com comentário em `.env.example` e
-`backend/.env.example`): `DB_PORT`/`BACKEND_PORT` (portas expostas), `JWT_SECRET` (nunca
-reaproveitar o valor de exemplo fora de localhost), `FRONTEND_ORIGIN` (CORS), e
-`SEED_ADMIN_NOME`/`SEED_ADMIN_EMAIL`/`SEED_ADMIN_SENHA` (usuário admin criado só no primeiro boot
-com banco vazio).
+- **Servidor com IP público** (Oracle Cloud "Always Free" + DuckDNS + HTTPS automático):
+  `bash deploy/instalar.sh` no servidor faz tudo.
+- **Sua própria máquina atrás de um túnel** (notebook, PC de casa — mesmo sem IP público):
+  `docker-compose.tunel.yml` + Tailscale Funnel ou Cloudflare Tunnel.
 
 ## Stack técnica
 
@@ -148,7 +113,7 @@ com banco vazio).
 | Autenticação | JWT em cookie `HttpOnly` (não `localStorage`) + senha com hash Bcrypt |
 | Integridade | Hash de conteúdo em formato CID (`multiformats`, sem daemon IPFS) organizado em árvore de Merkle |
 | Laudo em PDF | Pandoc + LaTeX (template Eisvogel por padrão, customizável por Projeto) |
-| Infraestrutura | Docker Compose (Postgres + backend + motor de laudo) |
+| Infraestrutura | Docker Compose (Postgres + backend + frontend + motor de laudo); Caddy com HTTPS em produção |
 
 ## Papéis de usuário
 
@@ -161,16 +126,6 @@ com banco vazio).
 
 Não existe hoje um papel de acesso externo (cliente/solicitante) com login próprio na
 plataforma — quem contrata a perícia acompanha por fora, não dentro do sistema.
-
-## Estrutura do repositório
-
-```
-csis-platform-v2/
-├── backend/     # NestJS + Prisma + PostgreSQL
-├── web/         # React + Vite + TypeScript + TanStack Query
-├── docs/adr/    # decisões de arquitetura (por que cada coisa foi feita do jeito que foi)
-└── docker-compose.yml
-```
 
 ## Decisões de arquitetura
 
