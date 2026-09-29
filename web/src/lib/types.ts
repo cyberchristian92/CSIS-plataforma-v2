@@ -144,6 +144,25 @@ export interface Missao {
   entregas?: Entrega[];
 }
 
+/// Item de "Minhas Missões" (GET /missoes/minhas): a missão com o que a fila
+/// pessoal precisa para decidir o próximo passo sem abrir a missão.
+export interface MinhaMissao extends Missao {
+  projeto: { id: string; nome: string };
+  checklist: { total: number; concluidos: number };
+  ultima_entrega: {
+    id: string;
+    status: EntregaStatus;
+    criado_em: string;
+    revisao: {
+      status: RevisaoStatus;
+      comentario: string | null;
+      autoaprovacao: boolean;
+      criado_em: string;
+      revisor: { id: string; nome: string };
+    } | null;
+  } | null;
+}
+
 export interface Coluna {
   id: string;
   projeto_id: string;
@@ -238,6 +257,7 @@ export interface Entrega {
   criado_em: string;
   autor?: { id: string; nome: string; email: string };
   revisoes?: Revisao[];
+  arquivos?: Arquivo[];
 }
 
 export type RevisaoStatus = "APROVADO" | "REJEITADO";

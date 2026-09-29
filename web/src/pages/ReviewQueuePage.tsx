@@ -9,6 +9,7 @@ import { MissionDialog } from "@/components/MissionDialog";
 import { formatDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { BotaoAutoaprovar } from "@/components/Autoaprovacao";
+import { useMotivoRejeicao } from "@/components/MotivoRejeicao";
 
 // Fila de Revisão — só ADMIN/LIDER/REVISOR (ver Sidebar.tsx e o gate de rota
 // em App.tsx). Segregação de Funções: quem executou a missão não revisa pelo
@@ -19,15 +20,28 @@ export default function ReviewQueuePage() {
   const { user } = useAuth();
   const [missaoAberta, setMissaoAberta] = useState<string | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
+  const { pedir: pedirMotivo, dialog: motivoDialog } = useMotivoRejeicao();
 
   const { data: missoes } = useQuery({ queryKey: ["missoes-em-revisao"], queryFn: api.missoes.emRevisao });
 
   const revisar = useMutation({
-    mutationFn: ({ entregaId, status }: { entregaId: string; status: "APROVADO" | "REJEITADO" }) =>
-      api.revisoes.criar(entregaId, status),
+    mutationFn: ({
+      entregaId,
+      status,
+      comentario,
+    }: {
+      entregaId: string;
+      status: "APROVADO" | "REJEITADO";
+      comentario?: string;
+    }) => api.revisoes.criar(entregaId, status, comentario),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["missoes-em-revisao"] }),
     onError: (e: any, vars) => setErros((prev) => ({ ...prev, [vars.entregaId]: e.message ?? "Falha ao revisar." })),
   });
+
+  async function rejeitar(entregaId: string) {
+    const comentario = await pedirMotivo();
+    if (comentario) revisar.mutate({ entregaId, status: "REJEITADO", comentario });
+  }
 
   return (
     <div className="p-6">
@@ -81,7 +95,7 @@ export default function ReviewQueuePage() {
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() => revisar.mutate({ entregaId: entrega.id, status: "REJEITADO" })}
+                    onClick={() => rejeitar(entrega.id)}
                   >
                     <X className="h-3.5 w-3.5" /> Rejeitar
                   </Button>
@@ -96,6 +110,7 @@ export default function ReviewQueuePage() {
       </div>
 
       <MissionDialog missaoId={missaoAberta} onClose={() => setMissaoAberta(null)} />
+      {motivoDialog}
     </div>
   );
 }

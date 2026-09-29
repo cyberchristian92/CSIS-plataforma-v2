@@ -33,6 +33,18 @@ export function formatDateOnly(iso: string): string {
   });
 }
 
+// Dias de calendário entre hoje (no fuso de quem está usando) e um prazo "só
+// data" (meia-noite UTC, ver formatDateOnly): 0 = vence hoje, negativo =
+// atrasado. Comparar os instantes direto marcaria como atrasado já no próprio
+// dia do prazo, a partir das 21h no Brasil.
+export function diasAtePrazo(iso: string): number {
+  const p = new Date(iso);
+  const prazo = Date.UTC(p.getUTCFullYear(), p.getUTCMonth(), p.getUTCDate());
+  const h = new Date();
+  const hoje = Date.UTC(h.getFullYear(), h.getMonth(), h.getDate());
+  return Math.round((prazo - hoje) / 86_400_000);
+}
+
 // O modelo Documento não tem campo de título (ver backend/prisma/schema.prisma
 // — só `conteudo`) — o nome exibido é derivado do primeiro heading/linha do
 // markdown, do jeito que o Flutter original também fazia.

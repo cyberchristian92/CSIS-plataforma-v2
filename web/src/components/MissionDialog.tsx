@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Check, Pencil, Plus, Tag, Trash2, Users, X } from "lucide-react";
+import { Calendar, Check, Paperclip, Pencil, Plus, Tag, Trash2, Users, X } from "lucide-react";
 import { Dialog } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -9,7 +9,9 @@ import { useConfirmDialog } from "./ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { BotaoAutoaprovar } from "./Autoaprovacao";
-import { cn, formatDate, formatDateOnly } from "@/lib/utils";
+import { EntregaForm } from "./EntregaForm";
+import { useMotivoRejeicao } from "./MotivoRejeicao";
+import { cn, diasAtePrazo, formatBytes, formatDate, formatDateOnly } from "@/lib/utils";
 import { LABEL_PALETTE, STATUS_COLORS, STATUS_LABELS } from "@/lib/theme-constants";
 import type { User } from "@/lib/types";
 
@@ -27,7 +29,6 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
   const qc = useQueryClient();
   const [novoComentario, setNovoComentario] = useState("");
   const [novoItemChecklist, setNovoItemChecklist] = useState("");
-  const [conteudoEntrega, setConteudoEntrega] = useState("");
   const [mostrarEntrega, setMostrarEntrega] = useState(false);
   const [mostrarAtribuir, setMostrarAtribuir] = useState(false);
   const [novaTag, setNovaTag] = useState("");
@@ -41,6 +42,7 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
   const [descricaoEdit, setDescricaoEdit] = useState("");
   const [prazoEdit, setPrazoEdit] = useState("");
   const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
+  const { pedir: pedirMotivo, dialog: motivoDialog } = useMotivoRejeicao();
 
   const open = !!missaoId;
 
@@ -130,19 +132,16 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
     if (ok) removerMissao.mutate();
   }
 
-  const enviarEntrega = useMutation({
-    mutationFn: () => api.entregas.criar(missaoId!, conteudoEntrega || undefined),
-    onSuccess: () => {
-      setConteudoEntrega("");
-      setMostrarEntrega(false);
-      invalidarMissao();
-      qc.invalidateQueries({ queryKey: ["entregas", missaoId] });
-    },
-  });
-
   const revisar = useMutation({
-    mutationFn: ({ entregaId, status }: { entregaId: string; status: "APROVADO" | "REJEITADO" }) =>
-      api.revisoes.criar(entregaId, status),
+    mutationFn: ({
+      entregaId,
+      status,
+      comentario,
+    }: {
+      entregaId: string;
+      status: "APROVADO" | "REJEITADO";
+      comentario?: string;
+    }) => api.revisoes.criar(entregaId, status, comentario),
     onSuccess: () => {
       invalidarMissao();
       qc.invalidateQueries({ queryKey: ["entregas", missaoId] });
@@ -256,7 +255,12 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
   // pelo caminho normal — só pela autoaprovação excepcional (TCC v4).
   const ehPropriaEntrega = (!!ultimaEntrega && ultimaEntrega.autor_id === user?.id) || ehResponsavel;
   const missaoAtrasada =
-    !!missao.prazo && new Date(missao.prazo) < new Date() && !["APROVADA", "REJEITADA"].includes(missao.status);
+    !!missao.prazo && diasAtePrazo(missao.prazo) < 0 && !["APROVADA", "REJEITADA"].includes(missao.status);
+
+  async function rejeitar(entregaId: string) {
+    const comentario = await pedirMotivo();
+    if (comentario) revisar.mutate({ entregaId, status: "REJEITADO", comentario });
+  }
 
   return (
     <>
@@ -537,23 +541,20 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
               Iniciar missão
             </Button>
           )}
-          {missao.status === "EM_ANDAMENTO" && (
-            <Button size="sm" onClick={() => setMostrarEntrega((v) => !v)}>
-              Fazer Entrega
+          {missao.status === "EM_ANDAMENTO" && !mostrarEntrega && (
+            <Button size="sm" onClick={() => setMostrarEntrega(true)}>
+              Fazer entrega
             </Button>
           )}
         </div>
-        {mostrarEntrega && (
-          <div className="mt-2 flex flex-col gap-2">
-            <textarea
-              value={conteudoEntrega}
-              onChange={(e) => setConteudoEntrega(e.target.value)}
-              placeholder="Descreva o que está sendo entregue…"
-              className="min-h-20 rounded-md border border-border bg-background p-2 text-sm focus:outline-none"
+        {mostrarEntrega && missao.status === "EM_ANDAMENTO" && (
+          <div className="mt-2">
+            <EntregaForm
+              missaoId={missao.id}
+              projetoId={missao.projeto_id}
+              onEntregue={() => setMostrarEntrega(false)}
+              onCancelar={() => setMostrarEntrega(false)}
             />
-            <Button size="sm" onClick={() => enviarEntrega.mutate()} disabled={enviarEntrega.isPending}>
-              Enviar entrega
-            </Button>
           </div>
         )}
         {podeAprovarRejeitar && podeRevisar && ehPropriaEntrega && (
@@ -584,7 +585,7 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={() => revisar.mutate({ entregaId: ultimaEntrega.id, status: "REJEITADO" })}
+                onClick={() => rejeitar(ultimaEntrega.id)}
               >
                 <X className="h-3.5 w-3.5" /> Rejeitar
               </Button>
@@ -643,7 +644,25 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
                   <span>{entrega.autor?.nome}</span>
                   <span>{formatDate(entrega.criado_em)}</span>
                 </div>
-                {entrega.conteudo && <p className="mt-1 text-sm">{entrega.conteudo}</p>}
+                {entrega.conteudo && <p className="mt-1 whitespace-pre-wrap text-sm">{entrega.conteudo}</p>}
+                {entrega.arquivos && entrega.arquivos.length > 0 && (
+                  <ul className="mt-2 divide-y divide-border border-y border-border text-xs">
+                    {entrega.arquivos.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 py-1.5">
+                        <a
+                          href={api.arquivos.urlDownload(a.id)}
+                          className="flex min-w-0 items-center gap-1.5 text-foreground hover:text-primary"
+                        >
+                          <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{a.nome}</span>
+                        </a>
+                        <span className="shrink-0 font-mono text-muted-foreground" title={`SHA-256 ${a.hash_sha256}`}>
+                          {formatBytes(a.tamanho)} · {a.hash_sha256.slice(0, 12)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <Badge
                   variant={entrega.status === "APROVADA" ? "default" : entrega.status === "REJEITADA" ? "destructive" : "outline"}
                   className="mt-1.5"
@@ -709,6 +728,7 @@ export function MissionDialog({ missaoId, onClose }: { missaoId: string | null; 
       </Section>
     </Dialog>
     {confirmDialog}
+    {motivoDialog}
     </>
   );
 }

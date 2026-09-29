@@ -208,8 +208,10 @@ Antes de abrir um PR, rode também:
 
 ```bash
 cd backend && npm run lint
-cd web && npm run lint && npm run build     # o build também checa os tipos
+cd web && npm run build     # checa os tipos e gera o build
 ```
+
+(O `web/` ainda não tem configuração de ESLint — `npm run lint` lá falha por isso.)
 
 ---
 

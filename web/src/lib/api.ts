@@ -9,6 +9,7 @@ import type {
   Entrega,
   Lista,
   LogAuditoria,
+  MinhaMissao,
   Missao,
   MissaoLabel,
   Pasta,
@@ -155,7 +156,7 @@ export const api = {
 
   missoes: {
     listarPorProjeto: (projetoId: string) => get<Missao[]>(`/projetos/${projetoId}/missoes`),
-    minhas: () => get<Missao[]>("/missoes/minhas"),
+    minhas: () => get<MinhaMissao[]>("/missoes/minhas"),
     emRevisao: () => get<Missao[]>("/missoes/em-revisao"),
     buscar: (id: string) => get<Missao>(`/missoes/${id}`),
     criar: (projetoId: string, dto: { titulo: string; descricao?: string; valor_bounty?: number; colunaId?: string }) =>
@@ -242,6 +243,16 @@ export const api = {
       const form = new FormData();
       form.append("arquivo", file);
       return request<Arquivo>(`/projetos/${projetoId}/arquivos?pastaId=${pastaId ?? "raiz"}`, {
+        method: "POST",
+        body: form,
+      });
+    },
+    // Anexo de uma entrega (laudo, evidências): o servidor só aceita do
+    // autor e enquanto a entrega aguarda revisão.
+    enviarNaEntrega: (projetoId: string, missaoId: string, entregaId: string, file: File) => {
+      const form = new FormData();
+      form.append("arquivo", file);
+      return request<Arquivo>(`/projetos/${projetoId}/arquivos?missaoId=${missaoId}&entregaId=${entregaId}`, {
         method: "POST",
         body: form,
       });
