@@ -194,7 +194,7 @@ export class InscricoesController {
     @Body() dto: AprovarInscricaoDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.inscricaoService.aprovar(id, dto.papelGlobal, dto.observacao, {
+    return this.inscricaoService.aprovar(id, dto, {
       id: user.id,
       papel: user.papel_global,
     });

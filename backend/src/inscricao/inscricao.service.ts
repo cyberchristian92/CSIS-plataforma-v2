@@ -35,6 +35,7 @@ import {
   TipoCampo,
 } from './dto/campo-inscricao.dto';
 import { InscreverDto } from './dto/inscrever.dto';
+import { AprovarInscricaoDto } from './dto/decisao-inscricao.dto';
 import { validarRespostas } from './validar-respostas';
 
 const CONFIRMACAO_VALIDADE_MS = 48 * 60 * 60 * 1000; // 48 horas
@@ -496,12 +497,18 @@ export class InscricaoService {
     return inscricao;
   }
 
+  /// Aprova e já deixa a pessoa pronta para trabalhar: papel, equipes
+  /// (Listas de Acesso) e áreas liberadas, tudo numa transação — se uma
+  /// equipe ou área não existir, nada é gravado.
   async aprovar(
     id: string,
-    papel: Papel,
-    observacao: string | undefined,
+    dto: AprovarInscricaoDto,
     decisor: { id: string; papel: Papel },
   ) {
+    const papel = dto.papelGlobal;
+    const observacao = dto.observacao;
+    const listaIds = [...new Set(dto.listaIds ?? [])];
+    const areaIds = [...new Set(dto.areaIds ?? [])];
     if (papel === 'ADMIN' && decisor.papel !== 'ADMIN') {
       throw new ForbiddenException(
         'Somente um Admin pode aprovar alguém como Admin.',
@@ -519,9 +526,20 @@ export class InscricaoService {
         `Esta inscrição já foi decidida (situação: ${inscricao.user.situacao}).`,
       );
     }
+    const [listasExistentes, areasExistentes] = await Promise.all([
+      this.prisma.lista.count({ where: { id: { in: listaIds } } }),
+      this.prisma.area.count({ where: { id: { in: areaIds } } }),
+    ]);
+    if (listasExistentes !== listaIds.length) {
+      throw new BadRequestException('Alguma equipe escolhida não existe mais.');
+    }
+    if (areasExistentes !== areaIds.length) {
+      throw new BadRequestException('Alguma área escolhida não existe mais.');
+    }
+    const userId = inscricao.user_id;
     await this.prisma.$transaction([
       this.prisma.user.update({
-        where: { id: inscricao.user_id },
+        where: { id: userId },
         data: { situacao: 'ATIVO', papel_global: papel },
       }),
       this.prisma.inscricao.update({
@@ -532,15 +550,24 @@ export class InscricaoService {
           observacao,
         },
       }),
+      this.prisma.listaMembro.createMany({
+        data: listaIds.map((lista_id) => ({ lista_id, user_id: userId })),
+        skipDuplicates: true,
+      }),
+      this.prisma.acessoRecurso.createMany({
+        data: areaIds.map((area_id) => ({ area_id, user_id: userId })),
+      }),
     ]);
     await this.auditoriaService.registrar(
       decisor.id,
       'APROVAR_INSCRICAO',
       'User',
-      inscricao.user_id,
+      userId,
       null,
       {
         papel_global: papel,
+        lista_ids: listaIds,
+        area_ids: areaIds,
         observacao: observacao ?? null,
       },
     );
