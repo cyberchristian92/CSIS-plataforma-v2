@@ -299,6 +299,51 @@ export class MissoesService {
     return atualizado;
   }
 
+  /// Quadro livre de Minhas Missões (TCC, cap. 4.2/8.3: em vez de trava,
+  /// registro). Voltar de Em Revisão retira a entrega pendente (fica
+  /// RETIRADA no histórico, e dá para entregar de novo); sair de Aprovada
+  /// reabre a missão, mas a entrega aprovada e a revisão continuam lá.
+  async mudarStatus(
+    id: string,
+    destino: 'PENDENTE' | 'EM_ANDAMENTO',
+    userId: string,
+    papel: string,
+  ) {
+    const missao = await this.buscar(id);
+    const podeGerenciarTudo =
+      papel === 'ADMIN' || papel === 'LIDER' || papel === 'REVISOR';
+    const ehResponsavel = missao.responsaveis.some((r) => r.user_id === userId);
+    if (!ehResponsavel && !podeGerenciarTudo) {
+      throw new ForbiddenException(
+        'Somente o especialista responsável (ou coordenação/revisão) pode mover esta missão.',
+      );
+    }
+    if (missao.status === destino) return missao;
+
+    const atualizado = await this.prisma.$transaction(async (tx) => {
+      if (missao.status === 'EM_REVISAO') {
+        await tx.entrega.updateMany({
+          where: { missao_id: id, status: 'EM_REVISAO' },
+          data: { status: 'RETIRADA' },
+        });
+      }
+      return tx.missao.update({
+        where: { id },
+        data: { status: destino },
+        include: INCLUDE_PADRAO,
+      });
+    });
+    await this.auditoriaService.registrar(
+      userId,
+      'MOVER_STATUS',
+      'Missao',
+      id,
+      { status: missao.status },
+      { status: destino },
+    );
+    return atualizado;
+  }
+
   async atualizarTags(id: string, tags: string[], userId: string) {
     if (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')) {
       throw new BadRequestException('tags deve ser uma lista de textos.');

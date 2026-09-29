@@ -18,6 +18,7 @@ import { CreateMissaoDto } from './dto/create-missao.dto';
 import { UpdateMissaoDto } from './dto/update-missao.dto';
 import { AtribuirMissaoDto } from './dto/atribuir-missao.dto';
 import { MoverMissaoDto } from './dto/mover-missao.dto';
+import { MudarStatusDto } from './dto/mudar-status.dto';
 import { EscopoGuard, EscopoParam } from '../acesso/escopo.guard';
 
 @Controller()
@@ -125,6 +126,23 @@ export class MissoesController {
   @EscopoParam('missao')
   iniciar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.missoesService.iniciar(id, user.id, user.papel_global);
+  }
+
+  /// Quadro livre: voltar de etapa, retirar a entrega da revisão ou reabrir
+  /// uma missão aprovada — sem trava, com registro na auditoria.
+  @Patch('missoes/:id/status')
+  @EscopoParam('missao')
+  mudarStatus(
+    @Param('id') id: string,
+    @Body() dto: MudarStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.missoesService.mudarStatus(
+      id,
+      dto.status,
+      user.id,
+      user.papel_global,
+    );
   }
 
   /// Tags são metadado colaborativo — qualquer usuário autenticado pode
