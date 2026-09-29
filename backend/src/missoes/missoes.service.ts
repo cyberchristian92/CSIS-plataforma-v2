@@ -85,15 +85,68 @@ export class MissoesService {
     });
   }
 
-  listarPorResponsavel(userId: string) {
-    return this.prisma.missao.findMany({
-      where: { responsaveis: { some: { user_id: userId } } },
+  /// Fila pessoal ("Minhas Missões"): só o que a pessoa ainda pode ver —
+  /// projeto arquivado sai da fila, e projeto que passou a ser restrito sem
+  /// ela na lista também. Cada missão vem com o que a tela precisa para
+  /// decidir o próximo passo sem abrir a missão: progresso do checklist e a
+  /// última entrega com a última revisão (quem devolveu e por quê).
+  async listarPorResponsavel(user: AuthenticatedUser) {
+    const missoes = await this.prisma.missao.findMany({
+      where: {
+        responsaveis: { some: { user_id: user.id } },
+        projeto: { status: { not: 'ARQUIVADO' } },
+      },
       orderBy: { prazo: 'asc' },
       include: {
         ...INCLUDE_PADRAO,
         projeto: { select: { id: true, nome: true } },
+        itens_checklist: { select: { concluido: true } },
+        entregas: {
+          orderBy: { criado_em: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            criado_em: true,
+            revisoes: {
+              orderBy: { criado_em: 'desc' },
+              take: 1,
+              select: {
+                status: true,
+                comentario: true,
+                autoaprovacao: true,
+                criado_em: true,
+                revisor: { select: { id: true, nome: true } },
+              },
+            },
+          },
+        },
       },
     });
+    const visiveis = await this.escopoService.idsProjetosVisiveis(
+      user,
+      missoes.map((m) => m.projeto_id),
+    );
+    return missoes
+      .filter((m) => visiveis.has(m.projeto_id))
+      .map(({ itens_checklist, entregas, ...missao }) => {
+        const ultima = entregas[0];
+        return {
+          ...missao,
+          checklist: {
+            total: itens_checklist.length,
+            concluidos: itens_checklist.filter((i) => i.concluido).length,
+          },
+          ultima_entrega: ultima
+            ? {
+                id: ultima.id,
+                status: ultima.status,
+                criado_em: ultima.criado_em,
+                revisao: ultima.revisoes[0] ?? null,
+              }
+            : null,
+        };
+      });
   }
 
   // Fila de Revisão: missões aguardando aprovação, com a entrega mais recente

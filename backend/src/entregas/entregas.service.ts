@@ -85,6 +85,12 @@ export class EntregasService {
             revisor: { select: { id: true, nome: true, email: true } },
           },
         },
+        // O que foi entregue junto (laudo, evidências) — o revisor avalia a
+        // entrega pelo histórico. Caminho no disco nunca sai da API.
+        arquivos: {
+          orderBy: { enviado_em: 'asc' },
+          omit: { caminho: true },
+        },
       },
     });
   }

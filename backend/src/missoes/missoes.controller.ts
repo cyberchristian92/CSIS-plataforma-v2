@@ -44,7 +44,7 @@ export class MissoesController {
 
   @Get('missoes/minhas')
   listarMinhas(@CurrentUser() user: AuthenticatedUser) {
-    return this.missoesService.listarPorResponsavel(user.id);
+    return this.missoesService.listarPorResponsavel(user);
   }
 
   @Get('missoes/em-revisao')
