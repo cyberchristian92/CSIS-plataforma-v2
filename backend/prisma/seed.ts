@@ -39,7 +39,7 @@ async function main() {
 
     const workspace = await prisma.workspace.create({
       data: {
-        nome: 'Workspace de Exemplo',
+        nome: 'CSIS',
         descricao:
           'Criado automaticamente no primeiro boot — pode apagar quando quiser.',
         areas: {
