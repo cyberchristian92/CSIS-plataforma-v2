@@ -25,6 +25,31 @@ const INCLUDE_PADRAO = {
   labels: { include: { label: true } },
 } as const;
 
+// O que o card dos quadros (projeto e Minhas Missões) mostra sem abrir a
+// missão, como no Trello: progresso do checklist e quantos comentários e
+// anexos ela tem.
+const INCLUDE_CARTAO = {
+  ...INCLUDE_PADRAO,
+  itens_checklist: { select: { concluido: true } },
+  _count: { select: { comentarios: true, arquivos: true } },
+} as const;
+
+function paraCartao<
+  T extends {
+    itens_checklist: { concluido: boolean }[];
+    _count: { comentarios: number; arquivos: number };
+  },
+>({ itens_checklist, _count, ...missao }: T) {
+  return {
+    ...missao,
+    checklist: {
+      total: itens_checklist.length,
+      concluidos: itens_checklist.filter((i) => i.concluido).length,
+    },
+    contagens: { comentarios: _count.comentarios, anexos: _count.arquivos },
+  };
+}
+
 @Injectable()
 export class MissoesService {
   constructor(
@@ -77,12 +102,13 @@ export class MissoesService {
     return missao;
   }
 
-  listarPorProjeto(projetoId: string) {
-    return this.prisma.missao.findMany({
+  async listarPorProjeto(projetoId: string) {
+    const missoes = await this.prisma.missao.findMany({
       where: { projeto_id: projetoId },
       orderBy: { ordem: 'asc' },
-      include: INCLUDE_PADRAO,
+      include: INCLUDE_CARTAO,
     });
+    return missoes.map(paraCartao);
   }
 
   /// Fila pessoal ("Minhas Missões"): só o que a pessoa ainda pode ver —
@@ -98,9 +124,8 @@ export class MissoesService {
       },
       orderBy: { prazo: 'asc' },
       include: {
-        ...INCLUDE_PADRAO,
+        ...INCLUDE_CARTAO,
         projeto: { select: { id: true, nome: true } },
-        itens_checklist: { select: { concluido: true } },
         entregas: {
           orderBy: { criado_em: 'desc' },
           take: 1,
@@ -129,14 +154,11 @@ export class MissoesService {
     );
     return missoes
       .filter((m) => visiveis.has(m.projeto_id))
-      .map(({ itens_checklist, entregas, ...missao }) => {
+      .map((m) => {
+        const { entregas, ...missao } = paraCartao(m);
         const ultima = entregas[0];
         return {
           ...missao,
-          checklist: {
-            total: itens_checklist.length,
-            concluidos: itens_checklist.filter((i) => i.concluido).length,
-          },
           ultima_entrega: ultima
             ? {
                 id: ultima.id,
