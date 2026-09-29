@@ -36,6 +36,9 @@ services:
       SEED_ADMIN_SENHA: ${SEED_ADMIN_SENHA:-TrocarSenha123}
       # Pasta compartilhada com o motor de laudo (serviço "pandoc" abaixo).
       LAUDO_WORKDIR: /work
+      # "Entrar com Google" (opcional, ver .env.example).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     volumes:
       - uploads:/app/uploads
       - ${LAUDO_VOLUME:-laudos}:/work

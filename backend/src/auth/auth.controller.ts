@@ -29,25 +29,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 
-const COOKIE_NOME = 'access_token';
-const COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 1 dia
-
-/// `secure` (cookie só trafega em HTTPS) liga sozinho em produção. Atrás de
-/// um proxy que termina o HTTPS (Cloudflare Tunnel) continua certo: quem
-/// decide é o navegador, que está falando HTTPS. COOKIE_SECURE=false existe
-/// só para testar a build de produção em http://localhost.
-function opcoesCookie() {
-  const secure = process.env.COOKIE_SECURE
-    ? process.env.COOKIE_SECURE === 'true'
-    : process.env.NODE_ENV === 'production';
-  return {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    secure,
-    path: '/',
-    maxAge: COOKIE_MAX_AGE_MS,
-  };
-}
+import { COOKIE_SESSAO as COOKIE_NOME, opcoesCookie } from './cookies';
 
 @Controller('auth')
 export class AuthController {

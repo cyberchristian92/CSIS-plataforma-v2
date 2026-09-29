@@ -18,10 +18,13 @@ export class InscreverDto {
   @IsEmail()
   email: string;
 
+  /// Obrigatória, exceto no cadastro pelo Google (a pessoa entra pelo
+  /// Google; pode criar uma senha depois em "Esqueci minha senha").
+  @IsOptional()
   @IsString()
   @MinLength(8)
   @MaxLength(200)
-  senha: string;
+  senha?: string;
 
   @IsOptional()
   @IsString()

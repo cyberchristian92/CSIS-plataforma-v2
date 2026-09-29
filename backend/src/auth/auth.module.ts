@@ -7,6 +7,8 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { EmailService } from './email.service';
 import { TokensService } from './tokens.service';
+import { GoogleService } from './google.service';
+import { GoogleAuthController } from './google-auth.controller';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
@@ -25,8 +27,14 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailService, TokensService],
-  exports: [AuthService, EmailService, TokensService],
+  controllers: [AuthController, GoogleAuthController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    EmailService,
+    TokensService,
+    GoogleService,
+  ],
+  exports: [AuthService, EmailService, TokensService, GoogleService],
 })
 export class AuthModule {}

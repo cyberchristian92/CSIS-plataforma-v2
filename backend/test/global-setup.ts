@@ -2,8 +2,11 @@ import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { iniciarGoogleFalso } from './google-falso';
 import {
   DIR_EMAILS_TESTE,
+  GOOGLE_FALSO_CLIENT_ID,
+  PORTA_GOOGLE_FALSO,
   DIR_LAUDO_TESTE,
   PORTA_TESTE,
   URL_API_TESTE,
@@ -46,6 +49,10 @@ export default async function globalSetup() {
   rmSync(DIR_EMAILS_TESTE, { recursive: true, force: true });
   rmSync(DIR_LAUDO_TESTE, { recursive: true, force: true });
   mkdirSync(DIR_LAUDO_TESTE, { recursive: true });
+  const googleFalso = await iniciarGoogleFalso();
+  (globalThis as { __GOOGLE_FALSO__?: typeof googleFalso }).__GOOGLE_FALSO__ =
+    googleFalso;
+  const urlGoogle = `http://127.0.0.1:${PORTA_GOOGLE_FALSO}`;
   const servidor = spawn('node', ['dist/src/main'], {
     cwd: RAIZ,
     env: {
@@ -59,6 +66,11 @@ export default async function globalSetup() {
       EMAIL_DIR: DIR_EMAILS_TESTE,
       CADASTRO_LIMITE_POR_HORA: '1000',
       FRONTEND_ORIGIN: 'http://localhost:5174',
+      GOOGLE_CLIENT_ID: GOOGLE_FALSO_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: 'segredo-teste',
+      GOOGLE_AUTH_URL: `${urlGoogle}/auth`,
+      GOOGLE_TOKEN_URL: `${urlGoogle}/token`,
+      GOOGLE_JWKS_URL: `${urlGoogle}/certs`,
     },
     stdio: ['ignore', 'ignore', 'inherit'],
   });

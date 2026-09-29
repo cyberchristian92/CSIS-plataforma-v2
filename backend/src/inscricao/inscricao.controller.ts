@@ -1,3 +1,5 @@
+import { GoogleService } from '../auth/google.service';
+import { COOKIE_GOOGLE_CADASTRO, opcoesCookie } from '../auth/cookies';
 import {
   Body,
   Controller,
@@ -9,6 +11,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
   UploadedFiles,
   UseGuards,
@@ -16,7 +19,7 @@ import {
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { diskStorage } from 'multer';
@@ -68,7 +71,10 @@ const opcoesAnexosInscricao = {
 /// também decide o que perguntar a eles).
 @Controller('inscricao')
 export class InscricaoController {
-  constructor(private readonly inscricaoService: InscricaoService) {}
+  constructor(
+    private readonly inscricaoService: InscricaoService,
+    private readonly google: GoogleService,
+  ) {}
 
   @Get('formulario')
   formulario() {
@@ -81,11 +87,29 @@ export class InscricaoController {
     default: { limit: LIMITE_CADASTROS_POR_HORA, ttl: 60 * 60 * 1000 },
   })
   @UseInterceptors(AnyFilesInterceptor(opcoesAnexosInscricao))
-  inscrever(
+  async inscrever(
     @Body() dto: InscreverDto,
     @UploadedFiles() arquivos: Express.Multer.File[] | undefined,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.inscricaoService.inscrever(dto, arquivos ?? []);
+    // Vindo do "Entrar com Google": nome/e-mail já verificados pelo Google.
+    const cookies = req.cookies as Record<string, string | undefined>;
+    const google = await this.google.lerCadastro(
+      cookies[COOKIE_GOOGLE_CADASTRO],
+    );
+    const resultado = await this.inscricaoService.inscrever(
+      dto,
+      arquivos ?? [],
+      google,
+    );
+    if (google) {
+      res.clearCookie(COOKIE_GOOGLE_CADASTRO, {
+        ...opcoesCookie(),
+        maxAge: undefined,
+      });
+    }
+    return resultado;
   }
 
   @Get('configuracao')

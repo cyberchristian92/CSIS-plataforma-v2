@@ -11,6 +11,13 @@ import { randomBytes } from 'node:crypto';
 import type { User } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVT_INSCRICAO_PENDENTE } from '../inscricao/inscricao.events';
+import { cadastroAberto } from '../inscricao/cadastro-aberto';
+import type { IdentidadeGoogle } from './google.service';
+
+export type ResultadoGoogle =
+  | { tipo: 'sessao'; token: string }
+  | { tipo: 'cadastro' }
+  | { tipo: 'redirecionar'; destino: string };
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { EmailService } from './email.service';
@@ -247,9 +254,89 @@ export class AuthService {
       where: { id: user.id },
       data: { ultimo_acesso: new Date() },
     });
-    const payload: PayloadJwt = { sub: user.id, v: user.sessao_versao };
-    const token = await this.jwtService.signAsync(payload);
+    const token = await this.emitirSessao(user);
     return { token, user: this.paraPublico(user) };
+  }
+
+  private emitirSessao(user: { id: string; sessao_versao: number }) {
+    const payload: PayloadJwt = { sub: user.id, v: user.sessao_versao };
+    return this.jwtService.signAsync(payload);
+  }
+
+  // --- Entrar com Google ----------------------------------------------------
+
+  /// Decide o que fazer com uma identidade já verificada pelo Google (ver
+  /// GoogleService). A conta é achada pelo vínculo (google_sub) ou pelo
+  /// e-mail — o Google garante que o e-mail é da pessoa.
+  async entrarComGoogle(id: IdentidadeGoogle): Promise<ResultadoGoogle> {
+    const user =
+      (await this.prisma.user.findUnique({ where: { google_sub: id.sub } })) ??
+      (await this.prisma.user.findUnique({ where: { email: id.email } }));
+    if (!user) {
+      return cadastroAberto()
+        ? { tipo: 'cadastro' }
+        : { tipo: 'redirecionar', destino: '/login?erro=cadastro-fechado' };
+    }
+    // Mesmo e-mail já ligado a OUTRA conta Google: não troca o vínculo.
+    if (user.google_sub && user.google_sub !== id.sub) {
+      return {
+        tipo: 'redirecionar',
+        destino: '/login?erro=google-outra-conta',
+      };
+    }
+    const vincular = user.google_sub ? {} : { google_sub: id.sub };
+
+    switch (user.situacao as Situacao) {
+      case 'ATIVO':
+      case 'CONVIDADO': {
+        // Convite + Google: a pessoa convidada provou ser dona do e-mail.
+        const atualizado = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { ...vincular, situacao: 'ATIVO', ultimo_acesso: new Date() },
+        });
+        await this.auditoriaService.registrar(
+          user.id,
+          'LOGIN_GOOGLE',
+          'User',
+          user.id,
+          null,
+          {
+            vinculou_google: !user.google_sub,
+            aceitou_convite: user.situacao === 'CONVIDADO',
+          },
+        );
+        return { tipo: 'sessao', token: await this.emitirSessao(atualizado) };
+      }
+      case 'AGUARDANDO_EMAIL': {
+        // O Google já confirmou o e-mail: o pedido vai para a fila.
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { ...vincular, situacao: 'PENDENTE' },
+        });
+        await this.auditoriaService.registrar(
+          user.id,
+          'CONFIRMAR_EMAIL',
+          'User',
+          user.id,
+          null,
+          { via: 'google' },
+        );
+        await this.eventos.emitAsync(EVT_INSCRICAO_PENDENTE, {
+          userId: user.id,
+        });
+        return { tipo: 'redirecionar', destino: '/login?aviso=pendente' };
+      }
+      case 'PENDENTE':
+        if (!user.google_sub) {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: vincular,
+          });
+        }
+        return { tipo: 'redirecionar', destino: '/login?aviso=pendente' };
+      default:
+        return { tipo: 'redirecionar', destino: '/login?erro=conta-bloqueada' };
+    }
   }
 
   /// Logout de verdade: além de o controller apagar o cookie, a versão de

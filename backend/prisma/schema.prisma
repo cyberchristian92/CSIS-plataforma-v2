@@ -37,6 +37,10 @@ model User {
   nome          String
   email         String    @unique
   senha_hash    String
+  // Identificador da conta Google ("sub" do OpenID Connect) — preenchido no
+  // primeiro "Entrar com Google". Quem entra só pelo Google tem uma senha
+  // inutilizável e pode criar uma pelo "Esqueci minha senha".
+  google_sub    String?   @unique
   papel_global  String    @default("COLABORADOR") // ADMIN, LIDER, REVISOR, COLABORADOR
   criado_em     DateTime  @default(now())
   // ATIVO, CONVIDADO (convite enviado, senha ainda não criada),

@@ -14,4 +14,10 @@ export const DIR_EMAILS_TESTE = join(tmpdir(), 'csis-emails-teste');
 // Fila do motor de laudo; nos testes quem responde é um worker falso.
 export const DIR_LAUDO_TESTE = join(tmpdir(), 'csis-laudo-teste');
 
+// Google falso (ver google-falso.ts) para os testes de "Entrar com Google".
+export const PORTA_GOOGLE_FALSO = Number(process.env.TEST_GOOGLE_PORT ?? 3998);
+export const GOOGLE_FALSO_CLIENT_ID =
+  'cliente-teste.apps.googleusercontent.com';
+export const GOOGLE_FALSO_ISSUER = 'https://accounts.google.com';
+
 process.env.DATABASE_URL = URL_BANCO_TESTE;

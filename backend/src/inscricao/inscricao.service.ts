@@ -19,8 +19,10 @@ import { TokensService } from '../auth/tokens.service';
 import {
   SALT_ROUNDS,
   normalizarEmail,
+  senhaInutilizavel,
   urlFrontend,
 } from '../auth/auth.service';
+import type { IdentidadeGoogle } from '../auth/google.service';
 import type { Papel } from '../common/constants/papeis';
 import {
   corrigirNomeUpload,
@@ -42,13 +44,13 @@ const CONFIRMACAO_VALIDADE_MS = 48 * 60 * 60 * 1000; // 48 horas
 const TIPOS_COM_OPCOES = new Set<TipoCampo>(['SELECAO', 'MULTIPLA']);
 const PREFIXO_ANEXO = 'anexo_';
 
-/// Cadastro público liga/desliga por instância (CADASTRO_ABERTO=false fecha).
-export function cadastroAberto(): boolean {
-  return process.env.CADASTRO_ABERTO !== 'false';
-}
+export { cadastroAberto } from './cadastro-aberto';
+import { cadastroAberto } from './cadastro-aberto';
 
 const MENSAGEM_COM_CONFIRMACAO =
   'Cadastro recebido. Enviamos um link de confirmação para o seu e-mail — depois de confirmar, a equipe analisa o pedido.';
+const MENSAGEM_GOOGLE =
+  'Cadastro recebido. A equipe vai analisar o pedido — quando for aprovado, entre com o botão "Entrar com Google".';
 const MENSAGEM_SEM_CONFIRMACAO =
   'Cadastro recebido. A equipe vai analisar o pedido e liberar o acesso — tente entrar mais tarde com seu e-mail e senha.';
 
@@ -260,7 +262,11 @@ export class InscricaoService {
 
   // --- Inscrição (público) --------------------------------------------------
 
-  async inscrever(dto: InscreverDto, arquivos: Express.Multer.File[]) {
+  async inscrever(
+    dto: InscreverDto,
+    arquivos: Express.Multer.File[],
+    google: IdentidadeGoogle | null = null,
+  ) {
     try {
       if (!cadastroAberto()) {
         throw new ForbiddenException(
@@ -269,6 +275,11 @@ export class InscricaoService {
       }
       // Robô: responde como se tivesse dado certo, sem gravar nada.
       if (dto.site) return { ok: true, mensagem: this.mensagemEnviado() };
+      if (!google && !dto.senha) {
+        throw new BadRequestException(
+          'Informe uma senha de pelo menos 8 caracteres.',
+        );
+      }
 
       let respostas: Record<string, unknown> = {};
       try {
@@ -312,7 +323,7 @@ export class InscricaoService {
         throw new BadRequestException(erros);
       }
 
-      const email = normalizarEmail(dto.email);
+      const email = google ? google.email : normalizarEmail(dto.email);
       const existente = await this.prisma.user.findUnique({ where: { email } });
       if (existente) {
         // Mesma resposta de sucesso — não revela quem já tem conta. O dono
@@ -332,15 +343,22 @@ export class InscricaoService {
       const user = await this.prisma.user
         .create({
           data: {
-            nome: dto.nome.trim(),
+            nome: dto.nome.trim() || google?.nome || '',
             email,
-            senha_hash: await bcrypt.hash(dto.senha, SALT_ROUNDS),
+            // Pelo Google não há senha: entra pelo Google (ou cria uma senha
+            // depois pelo "Esqueci minha senha").
+            senha_hash: google
+              ? await senhaInutilizavel()
+              : await bcrypt.hash(dto.senha!, SALT_ROUNDS),
+            google_sub: google?.sub,
             papel_global: 'COLABORADOR',
-            // Sem envio de e-mail na instância, ninguém receberia o link de
-            // confirmação: a inscrição vai direto para a fila da equipe.
-            situacao: this.emailService.entregaEmails
-              ? 'AGUARDANDO_EMAIL'
-              : 'PENDENTE',
+            // O Google já confirmou o e-mail; e sem envio de e-mail na
+            // instância ninguém receberia o link de confirmação — nos dois
+            // casos a inscrição vai direto para a fila da equipe.
+            situacao:
+              !google && this.emailService.entregaEmails
+                ? 'AGUARDANDO_EMAIL'
+                : 'PENDENTE',
             inscricao: {
               create: {
                 respostas: registradas as unknown as Prisma.InputJsonValue,
@@ -373,13 +391,14 @@ export class InscricaoService {
         {
           nome: user.nome,
           email: user.email,
+          via: google ? 'google' : 'formulario',
           anexos: anexosGravados.map((a) => ({
             nome: a.nome,
             hash_sha256: a.hash_sha256,
           })),
         },
       );
-      if (this.emailService.entregaEmails) {
+      if (user.situacao === 'AGUARDANDO_EMAIL') {
         await this.enviarConfirmacao(user.id, user.nome, user.email);
       } else {
         // Sem confirmação de e-mail, o pedido já está na fila da equipe.
@@ -387,7 +406,10 @@ export class InscricaoService {
           userId: user.id,
         });
       }
-      return { ok: true, mensagem: this.mensagemEnviado() };
+      return {
+        ok: true,
+        mensagem: google ? MENSAGEM_GOOGLE : this.mensagemEnviado(),
+      };
     } finally {
       await Promise.all(
         arquivos.map((a) => unlink(a.path).catch(() => undefined)),
