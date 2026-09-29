@@ -1,0 +1,19 @@
+# Instância de produção numa máquina sem IP público (notebook, PC de casa
+# atrás de CGNAT), exposta por um túnel que cuida do HTTPS:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.tunel.yml \
+#     --env-file .env.prod up -d --build
+#   tailscale funnel --bg 8080        # ou: cloudflared tunnel --url http://localhost:8080
+#
+# Troca só o Caddy: nada de 80/443 abertos nem Let's Encrypt — ele atende
+# HTTP em 127.0.0.1:8080 e o túnel entrega o endereço público com HTTPS.
+# O DOMINIO do .env.prod deve ser o endereço do túnel (ex.: csis.xxx.ts.net).
+
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    volumes: !override
+      - ./deploy/Caddyfile.tunel:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config

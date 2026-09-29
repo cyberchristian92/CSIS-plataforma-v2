@@ -1,0 +1,35 @@
+# Variante do Caddyfile para rodar atrás de um túnel (Tailscale Funnel,
+# Cloudflare Tunnel) — quem termina o HTTPS e tem o endereço público é o
+# túnel; o Caddy só atende HTTP em localhost. Usado pelo
+# docker-compose.tunel.yml.
+{
+	auto_https off
+	servers {
+		# O túnel chega pela rede do Docker: repassar o IP real do cliente
+		# (X-Forwarded-For) e o https original (X-Forwarded-Proto).
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options SAMEORIGIN
+		-Server
+	}
+
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle {
+		root * /srv
+		# Rotas do React Router (/projetos/..., /convite...) caem no index.html.
+		try_files {path} /index.html
+		file_server
+	}
+}

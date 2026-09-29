@@ -16,6 +16,9 @@ e o motor de PDF (TeX Live, ~5 GB). Render, Railway, Fly etc. no plano grátis n
 Quando tiver domínio próprio (`.com.br`), basta apontá-lo para o mesmo IP e trocar `DOMINIO` no
 `.env.prod` — ver [Trocar para domínio próprio](#trocar-para-domínio-próprio).
 
+**Sem servidor na nuvem?** Dá para hospedar no seu notebook ou num PC em casa, mesmo sem IP
+público (CGNAT) — ver [Alternativa: sua própria máquina + túnel](#alternativa-sua-própria-máquina--túnel).
+
 ---
 
 ## 1. Criar a conta na Oracle Cloud
@@ -43,7 +46,10 @@ No painel: **☰ → Compute → Instances → Create instance**.
    - *Shape*: **Ampere → VM.Standard.A1.Flex**, **4 OCPUs** e **24 GB** de memória.
      (Se der "Out of capacity", tente outro *Availability domain*, tente mais tarde, ou use
      2 OCPUs / 12 GB — também funciona.)
-3. **Networking**: deixe criar a rede nova (VCN) e marque **Assign a public IPv4 address**.
+3. **Networking**: *Create new virtual cloud network* + *Create new public subnet*. Se aparecer
+   **Assign a public IPv4 address**, marque. Se não aparecer (o assistente novo às vezes não
+   mostra), atribua depois de criar: instância → *Attached VNICs* → *IPv4 Addresses* → ⋮ →
+   *Edit* → *Ephemeral public IP*.
 4. **Add SSH keys**: **Generate a key pair for me → Save private key**. Guarde o arquivo
    (`ssh-key-….key`) — é a única forma de entrar no servidor.
 5. **Boot volume**: marque *Specify a custom boot volume size* e coloque **150 GB**
@@ -156,6 +162,67 @@ Baixa o código novo do GitHub, reconstrói o que mudou e aplica as migrations d
 2. No `.env.prod`, troque `DOMINIO=` pelo domínio novo.
 3. `sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d` — o Caddy tira o
    certificado novo sozinho.
+
+## Alternativa: sua própria máquina + túnel
+
+Para quando a Oracle diz "Out of capacity", ou para uma demonstração rápida: a plataforma roda
+na sua máquina (notebook, PC velho com Ubuntu Server) e um **túnel** entrega um endereço público
+com HTTPS. Não precisa abrir porta no roteador nem ter IP público.
+
+**Limite:** o site só fica no ar enquanto a máquina estiver ligada, acordada e com internet.
+Num notebook, desligue o repouso automático na tomada (Mac: `caffeinate -dims` num terminal
+aberto; Ubuntu: `sudo systemctl mask sleep.target suspend.target`).
+
+### 1. Subir a plataforma
+
+Precisa do Docker (seção 1 do [guia de desenvolvimento](desenvolvimento.md)).
+
+```bash
+git clone https://github.com/cyberchristian92/CSIS-plataforma-v2.git
+cd CSIS-plataforma-v2
+cp .env.prod.example .env.prod
+```
+
+Edite o `.env.prod`: `SEED_ADMIN_EMAIL` com seu e-mail, e gere as senhas com
+`openssl rand -hex 24` (para `DB_SENHA` e `SEED_ADMIN_SENHA`) e `openssl rand -hex 48`
+(para `JWT_SECRET`). O `DOMINIO` você preenche no passo 3. Depois:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.tunel.yml \
+  --env-file .env.prod up -d --build
+```
+
+O `docker-compose.tunel.yml` troca só o Caddy: em vez de 80/443 com Let's Encrypt, ele atende
+HTTP em `127.0.0.1:8080` (só acessível pela própria máquina) e o túnel cuida do HTTPS. Teste em
+<http://localhost:8080>.
+
+### 2. Ligar o túnel
+
+**Tailscale Funnel** — grátis, endereço fixo `https://<máquina>.<sua-rede>.ts.net`:
+
+1. Instale o Tailscale ([Mac/Windows](https://tailscale.com/download); Linux:
+   `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up`) e entre com sua conta.
+2. No painel (<https://login.tailscale.com/admin/dns>), ative **MagicDNS** e
+   **HTTPS Certificates**.
+3. `tailscale funnel --bg 8080` (no Linux, com `sudo`). Na primeira vez ele mostra um link para
+   autorizar o Funnel — abra, autorize e rode de novo. O comando mostra o endereço público.
+   (No Mac, o comando fica em `/Applications/Tailscale.app/Contents/MacOS/Tailscale`.)
+
+**Cloudflare Tunnel** — alternativa sem conta para testar:
+`cloudflared tunnel --url http://localhost:8080`. O endereço (`*.trycloudflare.com`) muda a cada
+vez que o comando reinicia; para um endereço fixo, é preciso um domínio próprio na Cloudflare.
+
+### 3. Apontar a plataforma para o endereço do túnel
+
+No `.env.prod`, ponha `DOMINIO=` com o endereço do túnel, sem `https://`
+(ex.: `DOMINIO=notebook.tail1234.ts.net`), e reinicie a API:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.tunel.yml \
+  --env-file .env.prod up -d backend
+```
+
+Abra o endereço público, entre com `SEED_ADMIN_EMAIL` / `SEED_ADMIN_SENHA` e troque a senha.
 
 ## Quando algo não funciona
 
