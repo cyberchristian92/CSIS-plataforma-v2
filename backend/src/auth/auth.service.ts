@@ -9,6 +9,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
 import type { User } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVT_INSCRICAO_PENDENTE } from '../inscricao/inscricao.events';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { EmailService } from './email.service';
@@ -63,6 +65,7 @@ export class AuthService {
     private readonly auditoriaService: AuditoriaService,
     private readonly emailService: EmailService,
     private readonly tokens: TokensService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   // --- Convite -------------------------------------------------------------
@@ -199,6 +202,7 @@ export class AuthService {
         null,
         null,
       );
+      await this.eventos.emitAsync(EVT_INSCRICAO_PENDENTE, { userId });
     }
     return { ok: true };
   }

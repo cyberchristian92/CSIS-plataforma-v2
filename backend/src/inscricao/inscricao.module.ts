@@ -6,10 +6,11 @@ import {
   InscricoesController,
 } from './inscricao.controller';
 import { InscricaoService } from './inscricao.service';
+import { AvisoEquipeListener } from './aviso-equipe.listener';
 
 @Module({
   imports: [AuditoriaModule, AuthModule],
   controllers: [InscricaoController, InscricoesController],
-  providers: [InscricaoService],
+  providers: [InscricaoService, AvisoEquipeListener],
 })
 export class InscricaoModule {}

@@ -312,6 +312,13 @@ export const api = {
       ),
   },
 
+  notificacoes: {
+    resumo: () =>
+      get<{ solicitacoes_cadastro?: number; fila_revisao?: number; missoes_devolvidas: number }>(
+        "/notificacoes/resumo",
+      ),
+  },
+
   auditoria: {
     listar: (pageSize = 8) => get<{ items: LogAuditoria[]; total: number }>(`/auditoria?pageSize=${pageSize}`),
   },

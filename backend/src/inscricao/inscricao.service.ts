@@ -10,7 +10,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { EVT_INSCRICAO_PENDENTE } from './inscricao.events';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { EmailService } from '../auth/email.service';
 import { TokensService } from '../auth/tokens.service';
@@ -56,6 +58,7 @@ export class InscricaoService {
     private readonly auditoriaService: AuditoriaService,
     private readonly emailService: EmailService,
     private readonly tokens: TokensService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   // --- Formulário (configurado pela equipe) --------------------------------
@@ -377,6 +380,11 @@ export class InscricaoService {
       );
       if (this.emailService.entregaEmails) {
         await this.enviarConfirmacao(user.id, user.nome, user.email);
+      } else {
+        // Sem confirmação de e-mail, o pedido já está na fila da equipe.
+        await this.eventos.emitAsync(EVT_INSCRICAO_PENDENTE, {
+          userId: user.id,
+        });
       }
       return { ok: true, mensagem: this.mensagemEnviado() };
     } finally {

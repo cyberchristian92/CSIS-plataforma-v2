@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router-dom";
-import { Bell, Moon, Search, Settings, Sun } from "lucide-react";
+import { Moon, Search, Settings, Sun } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { SinoNotificacoes } from "./SinoNotificacoes";
 import { useTheme } from "@/lib/theme-context";
 import { useAuth } from "@/lib/auth-context";
 
@@ -28,9 +29,7 @@ export function AppShell() {
             >
               {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
-            <button className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
-              <Bell className="h-5 w-5" />
-            </button>
+            <SinoNotificacoes />
             {user?.papel_global === "ADMIN" && (
               <Link
                 to="/configuracoes"
