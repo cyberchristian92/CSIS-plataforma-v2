@@ -1,11 +1,27 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo, useNomeExibicao } from "@/components/Logo";
+import { BotaoGoogle, SeparadorOu } from "@/components/BotaoGoogle";
+
+// O que o backend manda de volta depois do Google (?erro= / ?aviso=).
+const ERROS_GOOGLE: Record<string, string> = {
+  "google-indisponivel": "O login com Google não está configurado nesta instância.",
+  "google-cancelado": "O login com Google foi cancelado.",
+  "google-falhou": "Não foi possível confirmar sua conta Google. Tente de novo.",
+  "google-email": "O e-mail da sua conta Google não está verificado. Verifique-o no Google e tente de novo.",
+  "google-outra-conta":
+    "Este e-mail já está ligado a outra conta Google. Entre com a conta Google de sempre, ou com e-mail e senha.",
+  "conta-bloqueada": "Esta conta não tem acesso à plataforma. Fale com a equipe.",
+  "cadastro-fechado": "O cadastro público está fechado nesta instância. Peça um convite à equipe.",
+};
+const AVISOS_GOOGLE: Record<string, string> = {
+  pendente: "Seu cadastro foi recebido e aguarda aprovação da equipe. Você recebe um aviso quando for liberado.",
+};
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -17,7 +33,9 @@ export default function LoginPage() {
   const [enviando, setEnviando] = useState(false);
   const nomeExibicao = useNomeExibicao();
   const formulario = useQuery({ queryKey: ["formulario-inscricao"], queryFn: api.inscricao.formulario });
-  const aviso = (location.state as { aviso?: string } | null)?.aviso;
+  const [params] = useSearchParams();
+  const erroGoogle = ERROS_GOOGLE[params.get("erro") ?? ""];
+  const aviso = (location.state as { aviso?: string } | null)?.aviso ?? AVISOS_GOOGLE[params.get("aviso") ?? ""];
 
   if (user) {
     const from = (location.state as { from?: string })?.from ?? "/";
@@ -52,7 +70,11 @@ export default function LoginPage() {
 
         {aviso && <p className="mt-6 max-w-sm rounded-md bg-status-approved/10 p-3 text-sm text-status-approved">{aviso}</p>}
 
+        {erroGoogle && <p className="mt-6 max-w-sm rounded-md bg-destructive/10 p-3 text-sm text-destructive">{erroGoogle}</p>}
+
         <form onSubmit={onSubmit} className="mt-8 flex max-w-sm flex-col gap-3">
+          <BotaoGoogle />
+          <SeparadorOu />
           <Input
             type="email"
             autoComplete="email"

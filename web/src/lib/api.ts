@@ -73,6 +73,10 @@ export const api = {
     login: (email: string, senha: string) => post<User>("/auth/login", { email, senha }),
     logout: () => post<{ ok: boolean }>("/auth/logout"),
     me: () => get<User>("/auth/me"),
+    // Login com Google: se o servidor tem as credenciais configuradas, e o
+    // nome/e-mail do Google aguardando o formulário de cadastro.
+    provedores: () => get<{ google: boolean }>("/auth/provedores"),
+    googleCadastroPendente: () => get<{ nome: string; email: string }>("/auth/google/cadastro-pendente"),
     listarUsuarios: () => get<User[]>("/auth/usuarios"),
     atualizarPapel: (id: string, papelGlobal: User["papel_global"]) =>
       patch<User>(`/auth/usuarios/${id}/papel`, { papelGlobal }),

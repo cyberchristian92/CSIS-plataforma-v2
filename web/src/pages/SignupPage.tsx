@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import type { FormularioInscricao } from "@/lib/types";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PaginaPublica } from "@/components/PaginaPublica";
 import { ExternalLink } from "lucide-react";
+import { BotaoGoogle, SeparadorOu } from "@/components/BotaoGoogle";
 
 type Campo = FormularioInscricao["campos"][number];
 type Valor = string | boolean | string[];
@@ -180,6 +182,8 @@ function FormularioExterno({ link, instrucao }: { link: string; instrucao: strin
 // Cadastro público: o que é perguntado vem do formulário configurado pela
 // equipe (Admin/Coordenador/Revisor, em "Formulário de Inscrição"). A conta
 // nasce pendente — só entra depois de confirmar o e-mail e ser aprovada.
+// Vindo do Google (?google=1), nome e e-mail já vêm verificados e não há
+// senha: a pessoa entra pelo Google depois de aprovada.
 export default function SignupPage() {
   const formulario = useQuery({ queryKey: ["formulario-inscricao"], queryFn: api.inscricao.formulario });
   const [nome, setNome] = useState("");
@@ -192,18 +196,33 @@ export default function SignupPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [concluido, setConcluido] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const viaGoogle = params.get("google") === "1";
+  const google = useQuery({
+    queryKey: ["google-cadastro-pendente"],
+    queryFn: api.auth.googleCadastroPendente,
+    enabled: viaGoogle,
+    retry: false,
+  });
+  useEffect(() => {
+    if (google.data) {
+      setNome(google.data.nome);
+      setEmail(google.data.email);
+    }
+  }, [google.data]);
+  const comGoogle = viaGoogle && !!google.data;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErro(null);
-    if (senha !== confirmar) {
+    if (!comGoogle && senha !== confirmar) {
       setErro("As senhas não coincidem.");
       return;
     }
     const dados = new FormData();
     dados.append("nome", nome);
     dados.append("email", email);
-    dados.append("senha", senha);
+    if (!comGoogle) dados.append("senha", senha);
     dados.append("respostas", JSON.stringify(respostas));
     if (armadilha) dados.append("site", armadilha);
     for (const [campoId, arquivo] of Object.entries(anexos)) {
@@ -249,6 +268,23 @@ export default function SignupPage() {
       subtitulo="Todo cadastro é analisado pela equipe antes de o acesso ser liberado."
       largura="lg"
     >
+      {viaGoogle && google.isError && (
+        <p className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          A confirmação do Google expirou. Clique em "Cadastrar com Google" de novo.
+        </p>
+      )}
+      {comGoogle && (
+        <p className="mb-4 rounded-md bg-status-approved/10 p-3 text-sm">
+          Conta Google confirmada: <strong>{google.data!.email}</strong>. Complete os dados abaixo — depois da aprovação,
+          você entra com o botão "Entrar com Google".
+        </p>
+      )}
+      {!comGoogle && formulario.data?.aberto && (
+        <div className="mb-4 flex flex-col gap-3">
+          <BotaoGoogle rotulo="Cadastrar com Google" />
+          <SeparadorOu />
+        </div>
+      )}
       {formulario.isLoading && <p className="text-sm text-muted-foreground">Carregando formulário…</p>}
       {formulario.isError && <p className="text-sm text-destructive">Não foi possível carregar o formulário.</p>}
       {formulario.data && (
@@ -268,11 +304,13 @@ export default function SignupPage() {
               type="email"
               required
               autoComplete="email"
+              readOnly={comGoogle}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-10"
             />
           </div>
+          {!comGoogle && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="senha" className={classeRotulo}>
@@ -304,6 +342,7 @@ export default function SignupPage() {
               />
             </div>
           </div>
+          )}
 
           {formulario.data.campos.map((campo) => (
             <CampoDinamico
