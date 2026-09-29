@@ -40,7 +40,7 @@ export default function ReviewQueuePage() {
 
   async function rejeitar(entregaId: string) {
     const comentario = await pedirMotivo();
-    if (comentario) revisar.mutate({ entregaId, status: "REJEITADO", comentario });
+    if (comentario !== null) revisar.mutate({ entregaId, status: "REJEITADO", comentario: comentario || undefined });
   }
 
   return (

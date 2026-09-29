@@ -223,19 +223,21 @@ describe('Fluxo de entrega e revisão', () => {
     expect(res.body.autoaprovacao).toBe(false);
   });
 
-  it('rejeitar exige o motivo — é o que o especialista lê para corrigir', async () => {
+  it('rejeitar sem motivo é aceito — a devolução fica registrada na auditoria', async () => {
     const c = await cenario();
     const entrega = await entregar(c);
-    for (const semMotivo of [{}, { comentario: '   ' }]) {
-      await c.revisor.agente
-        .post(`/entregas/${entrega.id}/revisoes`)
-        .send({ status: 'REJEITADO', ...semMotivo })
-        .expect(400);
-    }
+    await c.revisor.agente
+      .post(`/entregas/${entrega.id}/revisoes`)
+      .send({ status: 'REJEITADO' })
+      .expect(201);
     const missao = await ctx.prisma.missao.findUniqueOrThrow({
       where: { id: c.missao.id },
     });
-    expect(missao.status).toBe('EM_REVISAO');
+    expect(missao.status).toBe('EM_ANDAMENTO');
+    const log = await ctx.prisma.logAuditoria.findFirst({
+      where: { entidade_id: entrega.id },
+    });
+    expect(log).not.toBeNull();
   });
 
   it('entrega já revisada não pode ser revisada de novo', async () => {

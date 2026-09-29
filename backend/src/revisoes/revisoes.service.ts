@@ -56,14 +56,6 @@ export class RevisoesService {
       }
       const autoaprovacao = ehExecutor;
 
-      // A missão rejeitada volta para o especialista corrigir — sem o motivo
-      // ele não sabe o que refazer (é o que aparece em "Minhas Missões").
-      if (dto.status === 'REJEITADO' && !dto.comentario?.trim()) {
-        throw new BadRequestException(
-          'Para rejeitar, explique o que precisa ser corrigido.',
-        );
-      }
-
       // Cada entrega é avaliada uma única vez, e só a que está aguardando
       // revisão — uma entrega antiga ou já avaliada não muda mais o status da
       // missão (o histórico precisa refletir exatamente o que foi decidido).
