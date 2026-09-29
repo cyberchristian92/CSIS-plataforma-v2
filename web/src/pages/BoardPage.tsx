@@ -11,21 +11,33 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ChevronDown, Filter, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, Filter, FoldHorizontal, MoreHorizontal, Trash2, Upload, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Coluna, Missao, MissaoLabel, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
-import { usePromptDialog } from "@/components/ui/prompt-dialog";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { CartaoMissao } from "@/components/CartaoMissao";
+import {
+  ComposerCartao,
+  ComposerLista,
+  ListaRecolhida,
+  TituloEditavel,
+  useListasRecolhidas,
+} from "@/components/quadro/trello";
 import { MissionDialog } from "@/components/MissionDialog";
 
 // Board Kanban livre — tão amplo quanto o Trello: colunas e cards podem ser
@@ -153,11 +165,12 @@ export default function BoardPage() {
   const { projetoId = "" } = useParams();
   const qc = useQueryClient();
   const [activeMissao, setActiveMissao] = useState<Missao | null>(null);
+  const [activeColuna, setActiveColuna] = useState<Coluna | null>(null);
   const [colunaEditando, setColunaEditando] = useState<Coluna | null>(null);
   const [missaoAberta, setMissaoAberta] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
   const { user } = useAuth();
   const podeGerenciarMissoes = user?.papel_global === "ADMIN" || user?.papel_global === "LIDER";
-  const { ask, dialog: promptDialog } = usePromptDialog();
   const { ask: confirmar, dialog: confirmDialog } = useConfirmDialog();
   const inputSincronizarRef = useRef<HTMLInputElement>(null);
   const [resultadoSync, setResultadoSync] = useState<{
@@ -168,12 +181,14 @@ export default function BoardPage() {
   const [busca, setBusca] = useState("");
   const [labelsFiltro, setLabelsFiltro] = useState<string[]>([]);
   const [responsaveisFiltro, setResponsaveisFiltro] = useState<string[]>([]);
+  const [recolhidas, alternarRecolhida] = useListasRecolhidas(`csis.quadro.${projetoId}.recolhidas`);
 
-  const { data: colunas } = useQuery({
+  const { data: colunasBrutas } = useQuery({
     queryKey: ["colunas", projetoId],
     queryFn: () => api.colunas.listarPorProjeto(projetoId),
     enabled: !!projetoId,
   });
+  const colunas = colunasBrutas ? [...colunasBrutas].sort((a, b) => a.ordem - b.ordem) : undefined;
 
   const { data: missoes } = useQuery({
     queryKey: ["missoes", projetoId],
@@ -208,6 +223,10 @@ export default function BoardPage() {
     return true;
   });
 
+  function mostrarErro(e: unknown, padrao: string) {
+    setErro(e instanceof ApiError ? e.message : padrao);
+  }
+
   const mover = useMutation({
     mutationFn: ({ id, colunaId, ordem }: { id: string; colunaId: string | null; ordem: number }) =>
       api.missoes.mover(id, colunaId, ordem),
@@ -219,29 +238,75 @@ export default function BoardPage() {
       );
       return { anteriores };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (e, _vars, ctx) => {
       if (ctx?.anteriores) qc.setQueryData(["missoes", projetoId], ctx.anteriores);
+      mostrarErro(e, "Não foi possível mover o cartão.");
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["missoes", projetoId] }),
   });
 
-  const criarColuna = useMutation({
-    mutationFn: async () => {
-      const nome = await ask("Nome da coluna");
-      if (!nome) return Promise.reject(new Error("cancelado"));
-      return api.colunas.criar(projetoId, nome);
+  // Arrastar lista: a nova ordem aparece na hora e é gravada em seguida.
+  const reordenarColunas = useMutation({
+    mutationFn: (ids: string[]) => api.colunas.reordenar(projetoId, ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: ["colunas", projetoId] });
+      const anteriores = qc.getQueryData<Coluna[]>(["colunas", projetoId]);
+      qc.setQueryData<Coluna[]>(["colunas", projetoId], (old) =>
+        old?.map((c) => ({ ...c, ordem: ids.indexOf(c.id) })),
+      );
+      return { anteriores };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["colunas", projetoId] }),
+    onError: (e, _ids, ctx) => {
+      if (ctx?.anteriores) qc.setQueryData(["colunas", projetoId], ctx.anteriores);
+      mostrarErro(e, "Não foi possível reordenar as listas.");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["colunas", projetoId] }),
   });
 
-  const criarMissao = useMutation({
-    mutationFn: async (colunaId?: string) => {
-      const titulo = await ask("Título da missão");
-      if (!titulo) return Promise.reject(new Error("cancelado"));
-      return api.missoes.criar(projetoId, { titulo, colunaId });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["missoes", projetoId] }),
-  });
+  async function criarColuna(nome: string) {
+    try {
+      await api.colunas.criar(projetoId, nome);
+      await qc.invalidateQueries({ queryKey: ["colunas", projetoId] });
+    } catch (e) {
+      mostrarErro(e, "Não foi possível criar a lista.");
+    }
+  }
+
+  async function criarMissao(colunaId: string, titulo: string) {
+    try {
+      await api.missoes.criar(projetoId, { titulo, colunaId });
+      await qc.invalidateQueries({ queryKey: ["missoes", projetoId] });
+    } catch (e) {
+      mostrarErro(e, "Não foi possível criar o cartão.");
+    }
+  }
+
+  async function renomearColuna(coluna: Coluna, nome: string) {
+    try {
+      await api.colunas.atualizar(coluna.id, { nome });
+      await qc.invalidateQueries({ queryKey: ["colunas", projetoId] });
+    } catch (e) {
+      mostrarErro(e, "Não foi possível renomear a lista.");
+    }
+  }
+
+  // Círculo de concluir do card: concluída = Aprovada (fica na auditoria).
+  async function alternarConcluida(missao: Missao) {
+    const destino = missao.status === "APROVADA" ? "EM_ANDAMENTO" : "APROVADA";
+    const anteriores = qc.getQueryData<Missao[]>(["missoes", projetoId]);
+    qc.setQueryData<Missao[]>(["missoes", projetoId], (old) =>
+      old?.map((m) => (m.id === missao.id ? { ...m, status: destino } : m)),
+    );
+    try {
+      await api.missoes.mudarStatus(missao.id, destino);
+    } catch (e) {
+      qc.setQueryData(["missoes", projetoId], anteriores);
+      mostrarErro(e, "Não foi possível mudar a missão.");
+    } finally {
+      qc.invalidateQueries({ queryKey: ["missoes", projetoId] });
+      qc.invalidateQueries({ queryKey: ["missoes-minhas"] });
+    }
+  }
 
   const removerMissao = useMutation({
     mutationFn: (id: string) => api.missoes.remover(id),
@@ -283,24 +348,45 @@ export default function BoardPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  // Ids de arrasto: listas levam o prefixo "coluna:"; cards, o id da missão.
+  // A área de cards de cada lista é soltável com o id puro da coluna.
+  function colunaDoAlvo(alvo: string): string | null {
+    if (alvo.startsWith(PREFIXO_LISTA)) return alvo.slice(PREFIXO_LISTA.length);
+    if (alvo === SEM_COLUNA) return null;
+    if (colunas?.some((c) => c.id === alvo)) return alvo;
+    return missoes?.find((m) => m.id === alvo)?.coluna_id ?? null;
+  }
+
   function onDragStart(e: DragStartEvent) {
-    const m = missoes?.find((m) => m.id === e.active.id);
-    setActiveMissao(m ?? null);
+    const id = String(e.active.id);
+    if (id.startsWith(PREFIXO_LISTA)) {
+      setActiveColuna(colunas?.find((c) => c.id === id.slice(PREFIXO_LISTA.length)) ?? null);
+      return;
+    }
+    setActiveMissao(missoes?.find((m) => m.id === id) ?? null);
   }
 
   function onDragEnd(e: DragEndEvent) {
     setActiveMissao(null);
+    setActiveColuna(null);
     const { active, over } = e;
-    if (!over || !missoes) return;
+    if (!over || !missoes || !colunas) return;
+    const ativo = String(active.id);
+    const alvo = String(over.id);
 
-    const missao = missoes.find((m) => m.id === active.id);
+    if (ativo.startsWith(PREFIXO_LISTA)) {
+      const origem = ativo.slice(PREFIXO_LISTA.length);
+      const destino = colunaDoAlvo(alvo);
+      if (!destino || destino === origem) return;
+      const ids = colunas.map((c) => c.id);
+      reordenarColunas.mutate(arrayMove(ids, ids.indexOf(origem), ids.indexOf(destino)));
+      return;
+    }
+
+    const missao = missoes.find((m) => m.id === ativo);
     if (!missao) return;
-
-    // over.id é ou o id de uma coluna (drop numa área vazia) ou o id de outro card
-    const overColuna = colunas?.find((c) => c.id === over.id);
-    const overMissao = missoes.find((m) => m.id === over.id);
-
-    const destinoColunaId = overColuna ? overColuna.id : (overMissao?.coluna_id ?? null);
+    const overMissao = missoes.find((m) => m.id === alvo);
+    const destinoColunaId = colunaDoAlvo(alvo);
     const irmaos = missoes
       .filter((m) => m.coluna_id === destinoColunaId && m.id !== missao.id)
       .sort((a, b) => a.ordem - b.ordem);
@@ -316,6 +402,11 @@ export default function BoardPage() {
   }
 
   const semColuna = missoesFiltradas.filter((m) => !m.coluna_id);
+  const acoesCartao = {
+    onAbrirMissao: setMissaoAberta,
+    onExcluirMissao: podeGerenciarMissoes ? pedirExclusaoMissao : undefined,
+    onAlternarConcluida: alternarConcluida,
+  };
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -335,9 +426,8 @@ export default function BoardPage() {
             setResponsaveisFiltro([]);
           }}
         />
-        <div className="flex shrink-0 items-center gap-2">
         {podeGerenciarMissoes && (
-          <>
+          <div className="flex shrink-0 items-center gap-2">
             <input
               ref={inputSincronizarRef}
               type="file"
@@ -358,18 +448,18 @@ export default function BoardPage() {
             >
               <Upload className="h-4 w-4" /> {sincronizar.isPending ? "Sincronizando…" : "Sincronizar do computador"}
             </Button>
-          </>
+          </div>
         )}
-        <Button size="sm" variant="ghost" onClick={() => criarColuna.mutate()}>
-          <Plus className="h-4 w-4" /> Nova coluna
-        </Button>
-        {podeGerenciarMissoes && (
-          <Button onClick={() => criarMissao.mutate(colunas?.[0]?.id)}>
-            <Plus className="h-4 w-4" /> Nova Missão
-          </Button>
-        )}
-        </div>
       </div>
+
+      {erro && (
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="flex-1">{erro}</span>
+          <button onClick={() => setErro(null)} className="hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {filtroAtivo && missoesFiltradas.length === 0 && (missoes?.length ?? 0) > 0 && (
         <p className="mb-4 text-sm text-muted-foreground">Nenhuma missão corresponde ao filtro atual.</p>
@@ -404,106 +494,155 @@ export default function BoardPage() {
       )}
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex flex-1 items-start gap-4 overflow-x-auto pb-4">
-          {colunas?.map((coluna) => (
-            <ColunaColumn
-              key={coluna.id}
-              coluna={coluna}
-              missoes={missoesFiltradas.filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
-              onNovaMissao={podeGerenciarMissoes ? () => criarMissao.mutate(coluna.id) : undefined}
-              onEditar={() => setColunaEditando(coluna)}
-              onAbrirMissao={setMissaoAberta}
-              onExcluirMissao={podeGerenciarMissoes ? pedirExclusaoMissao : undefined}
-            />
-          ))}
+        <div className="flex flex-1 items-start gap-3 overflow-x-auto pb-4">
+          <SortableContext items={(colunas ?? []).map((c) => PREFIXO_LISTA + c.id)} strategy={horizontalListSortingStrategy}>
+            {colunas?.map((coluna) => (
+              <ColunaColumn
+                key={coluna.id}
+                coluna={coluna}
+                missoes={missoesFiltradas.filter((m) => m.coluna_id === coluna.id).sort((a, b) => a.ordem - b.ordem)}
+                recolhida={recolhidas.has(coluna.id)}
+                onAlternarRecolhida={() => alternarRecolhida(coluna.id)}
+                onNovaMissao={podeGerenciarMissoes ? (titulo) => criarMissao(coluna.id, titulo) : undefined}
+                onRenomear={(nome) => void renomearColuna(coluna, nome)}
+                onEditar={() => setColunaEditando(coluna)}
+                {...acoesCartao}
+              />
+            ))}
+          </SortableContext>
 
           {semColuna.length > 0 && (
             <ColunaColumn
-              coluna={{ id: "__sem_coluna__", nome: "Sem coluna", ordem: -1, limite_wip: null, projeto_id: projetoId }}
+              coluna={{ id: SEM_COLUNA, nome: "Sem coluna", ordem: -1, limite_wip: null, projeto_id: projetoId }}
               missoes={semColuna}
+              recolhida={recolhidas.has(SEM_COLUNA)}
+              onAlternarRecolhida={() => alternarRecolhida(SEM_COLUNA)}
               onNovaMissao={undefined}
-              onEditar={() => {}}
-              onAbrirMissao={setMissaoAberta}
-              onExcluirMissao={podeGerenciarMissoes ? pedirExclusaoMissao : undefined}
+              {...acoesCartao}
             />
           )}
+
+          <ComposerLista onAdicionar={criarColuna} />
         </div>
 
-        <DragOverlay>{activeMissao && <MissaoCard missao={activeMissao} overlay />}</DragOverlay>
+        <DragOverlay>
+          {activeMissao && <MissaoCard missao={activeMissao} overlay />}
+          {activeColuna && (
+            <div className="w-[272px] rotate-2 rounded-xl bg-muted p-3 text-sm font-semibold shadow-lg">{activeColuna.nome}</div>
+          )}
+        </DragOverlay>
       </DndContext>
 
       <EditarColunaDialog coluna={colunaEditando} onClose={() => setColunaEditando(null)} />
       <MissionDialog missaoId={missaoAberta} onClose={() => setMissaoAberta(null)} />
-      {promptDialog}
       {confirmDialog}
     </div>
   );
 }
 
+const PREFIXO_LISTA = "coluna:";
+const SEM_COLUNA = "__sem_coluna__";
+
 function ColunaColumn({
   coluna,
   missoes,
+  recolhida,
+  onAlternarRecolhida,
   onNovaMissao,
+  onRenomear,
   onEditar,
   onAbrirMissao,
   onExcluirMissao,
+  onAlternarConcluida,
 }: {
   coluna: Coluna;
   missoes: Missao[];
-  onNovaMissao: (() => void) | undefined;
-  onEditar: () => void;
+  recolhida: boolean;
+  onAlternarRecolhida: () => void;
+  onNovaMissao: ((titulo: string) => Promise<unknown>) | undefined;
+  onRenomear?: (nome: string) => void;
+  onEditar?: () => void;
   onAbrirMissao: (id: string) => void;
   onExcluirMissao: ((missao: Missao) => void) | undefined;
+  onAlternarConcluida: (missao: Missao) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
+  const editavel = coluna.id !== SEM_COLUNA;
+  const lista = useSortable({ id: PREFIXO_LISTA + coluna.id, disabled: !editavel });
+  const { setNodeRef: areaCartoes, isOver } = useDroppable({ id: coluna.id });
   const acimaDoLimite = !!coluna.limite_wip && missoes.length > coluna.limite_wip;
-  const editavel = coluna.id !== "__sem_coluna__";
+  const estilo = { transform: CSS.Translate.toString(lista.transform), transition: lista.transition };
+
+  if (recolhida) {
+    return (
+      <div ref={lista.setNodeRef} style={estilo} {...lista.attributes} {...lista.listeners} className="self-start">
+        <ListaRecolhida titulo={coluna.nome} total={missoes.length} onExpandir={onAlternarRecolhida} destaque={acimaDoLimite} />
+      </div>
+    );
+  }
 
   return (
     <div
-      ref={setNodeRef}
+      ref={lista.setNodeRef}
+      style={estilo}
       className={cn(
-        // Lista no formato do Trello: largura fixa, fundo próprio, cantos arredondados.
-        "flex w-[272px] shrink-0 flex-col rounded-xl bg-muted/60 p-2",
+        // Lista no formato do Trello: largura fixa, fundo próprio, cantos
+        // arredondados; amarela quando passa do limite de cartões.
+        "flex max-h-full w-[272px] shrink-0 flex-col rounded-xl bg-muted/60 p-2",
+        acimaDoLimite && "bg-amber-200/70 dark:bg-amber-500/20",
+        lista.isDragging && "opacity-40",
         isOver && "ring-2 ring-primary/40",
       )}
     >
-      <div className="mb-2 flex items-center justify-between px-1.5 pt-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">{coluna.nome}</span>
-          <span className={cn("text-xs text-muted-foreground", acimaDoLimite && "font-semibold text-destructive")}>
-            {missoes.length}
-            {coluna.limite_wip ? `/${coluna.limite_wip}` : ""}
-          </span>
-        </div>
-        {editavel && (
-          <button onClick={onEditar} className="text-muted-foreground hover:text-foreground">
-            <Pencil className="h-3.5 w-3.5" />
+      <div
+        {...lista.attributes}
+        {...lista.listeners}
+        className={cn("mb-2 flex items-center gap-2 px-1.5 pt-0.5", editavel && "cursor-grab active:cursor-grabbing")}
+      >
+        <TituloEditavel valor={coluna.nome} editavel={editavel && !!onRenomear} onSalvar={(nome) => onRenomear?.(nome)} />
+        <span
+          className={cn(
+            "shrink-0 text-xs text-muted-foreground",
+            acimaDoLimite && "rounded bg-amber-400 px-1.5 font-semibold text-black",
+          )}
+        >
+          {missoes.length}
+          {coluna.limite_wip ? ` / ${coluna.limite_wip}` : ""}
+        </span>
+        <div className="ml-auto flex shrink-0 items-center">
+          <button
+            onClick={onAlternarRecolhida}
+            title="Recolher lista"
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <FoldHorizontal className="h-3.5 w-3.5" />
           </button>
-        )}
+          {editavel && onEditar && (
+            <button
+              onClick={onEditar}
+              title="Ações da lista"
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <SortableContext items={missoes.map((m) => m.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-2">
+      <div ref={areaCartoes} className="flex min-h-2 flex-col gap-2 overflow-y-auto">
+        <SortableContext items={missoes.map((m) => m.id)} strategy={verticalListSortingStrategy}>
           {missoes.map((missao) => (
             <MissaoCard
               key={missao.id}
               missao={missao}
               onAbrir={() => onAbrirMissao(missao.id)}
               onExcluir={onExcluirMissao ? () => onExcluirMissao(missao) : undefined}
+              onAlternarConcluida={() => onAlternarConcluida(missao)}
             />
           ))}
-        </div>
-      </SortableContext>
+        </SortableContext>
+      </div>
 
-      {onNovaMissao && (
-        <button
-          onClick={onNovaMissao}
-          className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Plus className="h-4 w-4" /> Adicionar missão
-        </button>
-      )}
+      {onNovaMissao && <ComposerCartao onAdicionar={onNovaMissao} />}
     </div>
   );
 }
@@ -589,11 +728,13 @@ function MissaoCard({
   overlay,
   onAbrir,
   onExcluir,
+  onAlternarConcluida,
 }: {
   missao: Missao;
   overlay?: boolean;
   onAbrir?: () => void;
   onExcluir?: () => void;
+  onAlternarConcluida?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: missao.id });
 
@@ -608,6 +749,7 @@ function MissaoCard({
       status={<Badge variant={STATUS_VARIANT[missao.status]}>{STATUS_LABEL[missao.status]}</Badge>}
       arrastando={isDragging}
       sobreposto={overlay}
+      onAlternarConcluida={overlay ? undefined : onAlternarConcluida}
       acoesHover={
         onExcluir && (
           <button

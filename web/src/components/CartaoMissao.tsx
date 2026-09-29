@@ -1,5 +1,5 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
-import { AlignLeft, Clock, MessageSquare, Paperclip, SquareCheck, Tag } from "lucide-react";
+import { AlignLeft, Check, Clock, MessageSquare, Paperclip, SquareCheck, Tag } from "lucide-react";
 import { Avatar } from "./ui/avatar";
 import type { Missao } from "@/lib/types";
 import { cn, diasAtePrazo } from "@/lib/utils";
@@ -20,15 +20,19 @@ interface Props extends HTMLAttributes<HTMLDivElement> {
   status?: ReactNode;
   /// Botões que aparecem ao passar o mouse (canto superior direito).
   acoesHover?: ReactNode;
+  /// Círculo de concluir do Trello (aparece ao passar o mouse; concluída =
+  /// status Aprovada, com o ✓ verde sempre visível).
+  onAlternarConcluida?: () => void;
   arrastando?: boolean;
   sobreposto?: boolean;
 }
 
 export const CartaoMissao = forwardRef<HTMLDivElement, Props>(function CartaoMissao(
-  { missao, projeto, devolvida, status, acoesHover, arrastando, sobreposto, className, ...resto },
+  { missao, projeto, devolvida, status, acoesHover, onAlternarConcluida, arrastando, sobreposto, className, ...resto },
   ref,
 ) {
   const labels = missao.labels ?? [];
+  const concluida = missao.status === "APROVADA";
   const responsaveis = missao.responsaveis ?? [];
   const checklist = missao.checklist;
   const contagens = missao.contagens;
@@ -79,7 +83,27 @@ export const CartaoMissao = forwardRef<HTMLDivElement, Props>(function CartaoMis
           </div>
         )}
 
-        <p className="break-words pr-5 text-sm leading-snug">{missao.titulo}</p>
+        <div className="flex items-start gap-1.5 pr-5">
+          {onAlternarConcluida && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAlternarConcluida();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title={concluida ? "Marcar como não concluída" : "Marcar como concluída"}
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0 items-center justify-center rounded-full",
+                concluida
+                  ? "flex bg-status-approved text-white"
+                  : "hidden border-2 border-muted-foreground/60 hover:border-foreground group-hover/card:flex",
+              )}
+            >
+              {concluida && <Check className="h-3 w-3" strokeWidth={3} />}
+            </button>
+          )}
+          <p className="min-w-0 break-words text-sm leading-snug">{missao.titulo}</p>
+        </div>
         {projeto && <p className="mt-0.5 text-xs text-muted-foreground">{projeto}</p>}
 
         {temSelos && (

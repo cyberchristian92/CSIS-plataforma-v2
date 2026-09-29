@@ -175,7 +175,7 @@ export const api = {
     atribuir: (id: string, responsavelIds: string[]) => patch<Missao>(`/missoes/${id}/atribuir`, { responsavelIds }),
     iniciar: (id: string) => patch<Missao>(`/missoes/${id}/iniciar`, {}),
     // Quadro livre: voltar de etapa, retirar da revisão, reabrir aprovada.
-    mudarStatus: (id: string, status: "PENDENTE" | "EM_ANDAMENTO") =>
+    mudarStatus: (id: string, status: "PENDENTE" | "EM_ANDAMENTO" | "EM_REVISAO" | "APROVADA") =>
       patch<Missao>(`/missoes/${id}/status`, { status }),
     remover: (id: string) => del<void>(`/missoes/${id}`),
   },
@@ -187,6 +187,9 @@ export const api = {
     atualizar: (id: string, dto: { nome?: string; limiteWip?: number | null }) =>
       patch<Coluna>(`/colunas/${id}`, dto),
     remover: (id: string) => del<void>(`/colunas/${id}`),
+    // Ordem das listas no quadro (arrastar lista, como no Trello).
+    reordenar: (projetoId: string, ids: string[]) =>
+      patch<void>(`/projetos/${projetoId}/colunas/reordenar`, { ordens: ids.map((id, ordem) => ({ id, ordem })) }),
   },
 
   missaoLabels: {
@@ -208,7 +211,7 @@ export const api = {
     criar: (entregaId: string, status: "APROVADO" | "REJEITADO", comentario?: string) =>
       post<Revisao>(`/entregas/${entregaId}/revisoes`, { status, comentario }),
     // Exceção: quem executou a missão aprova a própria entrega, com justificativa.
-    autoaprovar: (entregaId: string, justificativa: string) =>
+    autoaprovar: (entregaId: string, justificativa?: string) =>
       post<Revisao>(`/entregas/${entregaId}/revisoes`, { status: "APROVADO", autoaprovacao: true, justificativa }),
   },
 

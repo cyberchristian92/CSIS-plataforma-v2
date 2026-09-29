@@ -17,6 +17,8 @@ import { CartaoMissao } from "@/components/CartaoMissao";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/theme-constants";
 import { cn } from "@/lib/utils";
 import { ehDevolvida } from "./comum";
+import { FoldHorizontal } from "lucide-react";
+import { ListaRecolhida, useListasRecolhidas } from "@/components/quadro/trello";
 
 // Quadro de status de Minhas Missões — livre: dá para soltar o card em
 // qualquer coluna. Quem decide o que cada movimento faz é a página (iniciar,
@@ -39,6 +41,8 @@ export function QuadroMissoes({
   onMover: (missao: MinhaMissao, destino: MissaoStatus) => void;
 }) {
   const [arrastando, setArrastando] = useState<MinhaMissao | null>(null);
+  const [recolhidas, alternarRecolhida] = useListasRecolhidas("csis.minhas-missoes.recolhidas");
+  const alternarConcluida = (m: MinhaMissao) => onMover(m, m.status === "APROVADA" ? "EM_ANDAMENTO" : "APROVADA");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function onDragStart(e: DragStartEvent) {
@@ -60,7 +64,18 @@ export function QuadroMissoes({
           const daColuna = missoes.filter((m) => colunaDe(m) === status);
           // Devolvidas primeiro: alguém está esperando a correção.
           if (status === "EM_ANDAMENTO") daColuna.sort((a, b) => Number(ehDevolvida(b)) - Number(ehDevolvida(a)));
-          return <Coluna key={status} status={status} missoes={daColuna} onAbrir={onAbrir} />;
+          return recolhidas.has(status) ? (
+            <ColunaRecolhivel key={status} status={status} total={daColuna.length} onExpandir={() => alternarRecolhida(status)} />
+          ) : (
+            <Coluna
+              key={status}
+              status={status}
+              missoes={daColuna}
+              onAbrir={onAbrir}
+              onRecolher={() => alternarRecolhida(status)}
+              onAlternarConcluida={alternarConcluida}
+            />
+          );
         })}
       </div>
       <DragOverlay>{arrastando && <Cartao missao={arrastando} onAbrir={onAbrir} sobreposto />}</DragOverlay>
@@ -68,14 +83,28 @@ export function QuadroMissoes({
   );
 }
 
+// Recolhida continua aceitando o card solto em cima dela.
+function ColunaRecolhivel({ status, total, onExpandir }: { status: MissaoStatus; total: number; onExpandir: () => void }) {
+  const { setNodeRef } = useDroppable({ id: status });
+  return (
+    <div ref={setNodeRef} className="self-start">
+      <ListaRecolhida titulo={STATUS_LABELS[status]} total={total} onExpandir={onExpandir} />
+    </div>
+  );
+}
+
 function Coluna({
   status,
   missoes,
   onAbrir,
+  onRecolher,
+  onAlternarConcluida,
 }: {
   status: MissaoStatus;
   missoes: MinhaMissao[];
   onAbrir: (id: string) => void;
+  onRecolher: () => void;
+  onAlternarConcluida: (m: MinhaMissao) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -91,10 +120,17 @@ function Coluna({
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[status] }} />
         <span className="text-sm font-semibold">{STATUS_LABELS[status]}</span>
         <span className="text-xs text-muted-foreground">{missoes.length}</span>
+        <button
+          onClick={onRecolher}
+          title="Recolher lista"
+          className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <FoldHorizontal className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="flex flex-col gap-2">
         {missoes.map((m) => (
-          <Cartao key={m.id} missao={m} onAbrir={onAbrir} />
+          <Cartao key={m.id} missao={m} onAbrir={onAbrir} onAlternarConcluida={() => onAlternarConcluida(m)} />
         ))}
         {missoes.length === 0 && <p className="px-1.5 py-2 text-xs text-muted-foreground">Nada por aqui.</p>}
       </div>
@@ -105,10 +141,12 @@ function Coluna({
 function Cartao({
   missao,
   onAbrir,
+  onAlternarConcluida,
   sobreposto,
 }: {
   missao: MinhaMissao;
   onAbrir: (id: string) => void;
+  onAlternarConcluida?: () => void;
   sobreposto?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: missao.id });
@@ -121,6 +159,7 @@ function Cartao({
       missao={missao}
       projeto={missao.projeto.nome}
       devolvida={ehDevolvida(missao)}
+      onAlternarConcluida={sobreposto ? undefined : onAlternarConcluida}
       arrastando={isDragging}
       sobreposto={sobreposto}
     />

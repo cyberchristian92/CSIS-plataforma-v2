@@ -5,12 +5,10 @@ import { api, ApiError } from "@/lib/api";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 
-const MIN_JUSTIFICATIVA = 15;
-
 /// Autoaprovação (TCC v4, seções 4.2 e 8.3): quem executou a missão pode
 /// aprovar a própria entrega em caráter excepcional — por exemplo, sem revisor
-/// disponível no prazo. Exige justificativa e fica registrada em destaque na
-/// auditoria e no histórico da missão. O caminho normal continua sendo outra
+/// disponível no prazo. A justificativa é opcional; fica registrada em
+/// destaque na auditoria e no histórico da missão. O caminho normal continua sendo outra
 /// pessoa revisar.
 export function BotaoAutoaprovar({ entregaId, onConcluido }: { entregaId: string; onConcluido: () => void }) {
   const [aberto, setAberto] = useState(false);
@@ -48,7 +46,7 @@ export function DialogoAutoaprovar({
   }, [entregaId]);
 
   const autoaprovar = useMutation({
-    mutationFn: () => api.revisoes.autoaprovar(entregaId!, justificativa.trim()),
+    mutationFn: () => api.revisoes.autoaprovar(entregaId!, justificativa.trim() || undefined),
     onSuccess: () => {
       onFechar();
       onConcluido();
@@ -60,8 +58,8 @@ export function DialogoAutoaprovar({
     <Dialog open={!!entregaId} onClose={onFechar}>
       <h2 className="mb-1 text-lg font-bold">Autoaprovar a própria entrega</h2>
       <p className="mb-3 text-sm text-muted-foreground">
-        Use só em caráter excepcional, quando não houver revisor disponível. Fica registrado de forma permanente,
-        em destaque, na auditoria e no histórico da missão — com seu nome, a data e a justificativa abaixo.
+        Fica registrado de forma permanente, em destaque, na auditoria e no histórico da missão — com seu nome e a
+        data (e a justificativa, se escrever uma).
       </p>
       {erro && <p className="mb-2 text-xs text-destructive">{erro}</p>}
       <textarea
@@ -69,16 +67,15 @@ export function DialogoAutoaprovar({
         autoFocus
         value={justificativa}
         onChange={(e) => setJustificativa(e.target.value)}
-        placeholder="Por que esta entrega não pôde ser revisada por outra pessoa?"
+        placeholder="Justificativa (opcional): por que não houve revisão por outra pessoa?"
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
       />
-      <p className="mt-1 text-xs text-muted-foreground">Mínimo de {MIN_JUSTIFICATIVA} caracteres.</p>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onFechar}>
           Cancelar
         </Button>
         <Button
-          disabled={justificativa.trim().length < MIN_JUSTIFICATIVA || autoaprovar.isPending}
+          disabled={autoaprovar.isPending}
           onClick={() => autoaprovar.mutate()}
         >
           Autoaprovar
