@@ -142,6 +142,9 @@ export interface Missao {
   labels?: { label: MissaoLabel }[];
   projeto?: { id: string; nome: string };
   entregas?: Entrega[];
+  // Vêm nas listagens dos quadros (projeto e Minhas Missões), para o card.
+  checklist?: { total: number; concluidos: number };
+  contagens?: { comentarios: number; anexos: number };
 }
 
 /// Item de "Minhas Missões" (GET /missoes/minhas): a missão com o que a fila
@@ -149,6 +152,7 @@ export interface Missao {
 export interface MinhaMissao extends Missao {
   projeto: { id: string; nome: string };
   checklist: { total: number; concluidos: number };
+  contagens: { comentarios: number; anexos: number };
   ultima_entrega: {
     id: string;
     status: EntregaStatus;

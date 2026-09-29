@@ -14,7 +14,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Calendar, Check, ChevronDown, Filter, Pencil, Plus, Tag, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, Filter, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Coluna, Missao, MissaoLabel, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,9 @@ import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { usePromptDialog } from "@/components/ui/prompt-dialog";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import { cn, formatDateOnly } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { CartaoMissao } from "@/components/CartaoMissao";
 import { MissionDialog } from "@/components/MissionDialog";
 
 // Board Kanban livre — tão amplo quanto o Trello: colunas e cards podem ser
@@ -462,13 +463,14 @@ function ColunaColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-72 shrink-0 flex-col rounded-lg border border-border bg-muted/40 p-2",
+        // Lista no formato do Trello: largura fixa, fundo próprio, cantos arredondados.
+        "flex w-[272px] shrink-0 flex-col rounded-xl bg-muted/60 p-2",
         isOver && "ring-2 ring-primary/40",
       )}
     >
-      <div className="mb-2 flex items-center justify-between px-1">
+      <div className="mb-2 flex items-center justify-between px-1.5 pt-0.5">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{coluna.nome}</span>
+          <span className="text-sm font-semibold">{coluna.nome}</span>
           <span className={cn("text-xs text-muted-foreground", acimaDoLimite && "font-semibold text-destructive")}>
             {missoes.length}
             {coluna.limite_wip ? `/${coluna.limite_wip}` : ""}
@@ -497,9 +499,9 @@ function ColunaColumn({
       {onNovaMissao && (
         <button
           onClick={onNovaMissao}
-          className="mt-2 flex items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent"
+          className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          <Plus className="h-3.5 w-3.5" /> Adicionar missão
+          <Plus className="h-4 w-4" /> Adicionar missão
         </button>
       )}
     </div>
@@ -595,74 +597,32 @@ function MissaoCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: missao.id });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    borderLeft: missao.cor_capa ? `3px solid ${missao.cor_capa}` : undefined,
-  };
-
-  const atrasada =
-    !!missao.prazo && new Date(missao.prazo) < new Date() && !["APROVADA", "REJEITADA"].includes(missao.status);
-
   return (
-    <div
+    <CartaoMissao
       ref={overlay ? undefined : setNodeRef}
-      style={overlay ? undefined : style}
+      style={overlay ? undefined : { transform: CSS.Transform.toString(transform), transition }}
       {...(overlay ? {} : { ...attributes, ...listeners })}
       onClick={overlay ? undefined : onAbrir}
-      className={cn(
-        "group/card relative cursor-grab rounded-md border border-border bg-card p-2.5 shadow-sm active:cursor-grabbing",
-        isDragging && "opacity-40",
-        overlay && "rotate-2 shadow-lg",
-      )}
-    >
-      {onExcluir && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onExcluir();
-          }}
-          title="Excluir missão"
-          className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-destructive group-hover/card:opacity-100"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-      )}
-      {missao.labels && missao.labels.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-1">
-          {missao.labels.map((l) => (
-            <span
-              key={l.label.id}
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white/90"
-              style={{ backgroundColor: l.label.cor }}
-            >
-              {l.label.nome}
-            </span>
-          ))}
-        </div>
-      )}
-      <p title={missao.titulo} className="line-clamp-2 pr-5 text-sm font-medium leading-snug">
-        {missao.titulo}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Badge variant={STATUS_VARIANT[missao.status]}>{STATUS_LABEL[missao.status]}</Badge>
-        {missao.prazo && (
-          <Badge variant="outline" className={cn("gap-1", atrasada && "border-destructive text-destructive")}>
-            <Calendar className="h-2.5 w-2.5" /> {formatDateOnly(missao.prazo)}
-          </Badge>
-        )}
-        {missao.tags?.map((tag) => (
-          <Badge key={tag} variant="outline" className="gap-1">
-            <Tag className="h-2.5 w-2.5" />
-            {tag}
-          </Badge>
-        ))}
-      </div>
-      {missao.valor_bounty != null && (
-        <p className="mt-1.5 text-xs font-medium text-primary">
-          R$ {missao.valor_bounty.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-        </p>
-      )}
-    </div>
+      missao={missao}
+      // As colunas deste quadro são livres: o status oficial vai no card.
+      status={<Badge variant={STATUS_VARIANT[missao.status]}>{STATUS_LABEL[missao.status]}</Badge>}
+      arrastando={isDragging}
+      sobreposto={overlay}
+      acoesHover={
+        onExcluir && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onExcluir();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Excluir missão"
+            className="rounded bg-card/90 p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )
+      }
+    />
   );
 }
